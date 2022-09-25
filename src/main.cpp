@@ -5,11 +5,14 @@
 #include <syslog.h>
 #include <unistd.h>
 #include "logger.hpp"
+#include "sig_func.hpp"
+
 
 const std::string PROC_NAME = "parnassia";
 static std::string pid_file = "/var/run/" + PROC_NAME + ".pid";
 volatile int g_program_run = 1;
-static int isRunning();
+static int isRunning(pid_t& pid);
+static void sigExit(int signo);
 
 enum class run_model{START = 0, STOP, DEBUG, MODEL_END };
 
@@ -24,6 +27,7 @@ void Usage()
 
 int main(int argc, char* argv[])
 {
+    pid_t opid;
     if (argc == 1) {
         Usage();
         exit(EXIT_FAILURE);
@@ -59,6 +63,27 @@ int main(int argc, char* argv[])
         }
     }
 
+    if (model == run_model::STOP) {
+        int i = 0;
+        int ret = isRunning(opid);
+        if (ret) {
+            kill(opid, SIGTERM);
+            do {
+                sleep(2);
+                ret = isRunning(opid);
+                i++;
+            } while (ret && i < 10);  //进程还存在并且最多检查10次
+
+            if (ret) {
+                kill(opid, SIGKILL); //防止没有关闭，强制关闭
+            }
+        } else {
+            std::cout << "No running program" <<std::endl;
+        }
+        std::cout << "Stop " << PROC_NAME << ", pid = " << opid << std::endl;
+        exit(EXIT_SUCCESS);
+    }
+
     if (model == run_model::MODEL_END) {
         Usage();
         exit(EXIT_FAILURE);
@@ -80,8 +105,12 @@ int main(int argc, char* argv[])
         }
     }
 
-    if (isRunning()) {
+    if (isRunning(opid)) {
         exit(EXIT_FAILURE);
+    }
+
+    if (signal(SIGTERM, sigExit) == SIG_ERR) {
+        LOG->error("Register signal exit func fail");
     }
 
     umask(0);
@@ -104,7 +133,7 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-int isRunning()
+int isRunning(pid_t& pid)
 {
     char buf[16] = {0};
 
@@ -125,6 +154,7 @@ int isRunning()
         if(fcntl(fd, F_GETLK, &fl) == 0) {
             printf("%s has been run, pid = %d\n", PROC_NAME.c_str(), fl.l_pid);
         }
+        pid = fl.l_pid;
         close(fd);
         return EXIT_FAILURE;
     } else {
@@ -133,4 +163,10 @@ int isRunning()
         write(fd, buf, strlen(buf) + 1);
         return EXIT_SUCCESS;
     }
+}
+
+void sigExit(int signo)
+{
+    g_program_run = 0;
+    LOG->warn("Caught terminate signal {0:d}, the program will exit", signo);
 }
