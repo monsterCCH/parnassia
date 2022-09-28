@@ -8,6 +8,7 @@ project(parnassia)
 
 # 设置项目源文件
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} SOURCES)
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/../utils UTILS_SOURCES)
 
 # 设置链接库路劲
 link_directories(${CMAKE_ARCHIVE_OUTPUT_DIRECTORY})
@@ -15,6 +16,7 @@ link_directories(${CMAKE_ARCHIVE_OUTPUT_DIRECTORY})
 # 设置生成目标
 add_executable(${PROJECT_NAME}
         ${SOURCES}
+        ${UTILS_SOURCES}
         )
 
 # 设置编译器属性
@@ -34,7 +36,8 @@ target_compile_options(${PROJECT_NAME}
 #设置链接目标
 target_link_libraries(${PROJECT_NAME}
         PRIVATE
-        gtest
-        gtest_main
+        libhiredis_cluster.a
+        libhiredis.a
+        event
         #        -fsanitize=address
         )

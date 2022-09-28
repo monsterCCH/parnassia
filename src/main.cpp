@@ -2,17 +2,20 @@
 #include <iostream>
 #include <csignal>
 #include <sys/stat.h>
-#include <syslog.h>
 #include <unistd.h>
-#include "logger.hpp"
+#include "logger.h"
 #include "sig_func.hpp"
-
+#include "config.h"
+#include "host_info.h"
+#include "redis_cl_manager.h"
+#include "redis_publish.h"
 
 const std::string PROC_NAME = "parnassia";
 static std::string pid_file = "/var/run/" + PROC_NAME + ".pid";
 volatile int g_program_run = 1;
 static int isRunning(pid_t& pid);
 static void sigExit(int signo);
+void redisInit();
 
 enum class run_model{START = 0, STOP, DEBUG, MODEL_END };
 
@@ -79,6 +82,7 @@ int main(int argc, char* argv[])
             }
         } else {
             std::cout << "No running program" <<std::endl;
+            exit(EXIT_SUCCESS);
         }
         std::cout << "Stop " << PROC_NAME << ", pid = " << opid << std::endl;
         exit(EXIT_SUCCESS);
@@ -125,9 +129,44 @@ int main(int argc, char* argv[])
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
+    signal(SIGPIPE, SIG_IGN);
+
+    try {
+        for (const auto& iter : CONFIG::config::instance().get_redisCluster()){
+            std::string redis_server = iter.redis_server;
+        }
+    } catch (exception& e) {
+        LOG->error("{}", e.what());
+    }
+
+    hostInfo hi;
+    std::shared_ptr<redisClManager> redis_ptr= std::make_shared<redisClManager>(CONFIG::config::instance().get_redisCluster());
+//    redisInit();
+    CRedisPublisher publisher;
+
+    bool ret = publisher.init();
+    if (!ret)
+    {
+        printf("Init failed.\n");
+        return 0;
+    }
+
+    ret = publisher.connect();
+    if (!ret)
+    {
+        printf("connect failed.");
+        return 0;
+    }
 
     while (g_program_run) {
-        sleep(1);
+        hi.flush();
+        string res = hi.genHwInfoJson();
+        stringstream ss;
+        ss << "PUBLISH hw_info " << res ;
+        LOG->info("{}", ss.str());
+//        redis_ptr->redisClCommand("", res);
+        publisher.publish("hw_info", res);
+        sleep(30);
         LOG->info("heart");
     }
     return 0;
@@ -139,7 +178,8 @@ int isRunning(pid_t& pid)
 
     int fd = open(pid_file.c_str(), O_CREAT | O_RDWR, S_IRWXU);
     if(fd < 0) {
-        LOG->error("open file %s failed", pid_file);
+        LOG->error("open file {} failed", pid_file);
+        sleep(3);
         return EXIT_FAILURE;
     }
 
@@ -169,4 +209,9 @@ void sigExit(int signo)
 {
     g_program_run = 0;
     LOG->warn("Caught terminate signal {0:d}, the program will exit", signo);
+}
+
+void redisInit()
+{
+    redisClManager instance{CONFIG::config::instance().get_redisCluster()};
 }

@@ -94,15 +94,13 @@ if (NOT THIRD_PARTY_LIB_BASE)
 endif (NOT THIRD_PARTY_LIB_BASE)
 message(STATUS "-DTHIRD_PARTY_LIB_BASE=${THIRD_PARTY_LIB_BASE}")
 
-# 查找依赖第三方库
-#find_package(Boost 1.71 REQUIRED COMPONENTS regex system thread filesystem)
-
 # 设置依赖第三方库
 set(THIRD_PARTY_LIBS
         ${THIRD_PARTY_LIB_BASE}/google_test
         ${THIRD_PARTY_LIB_BASE}/hiredis_cluster
         ${THIRD_PARTY_LIB_BASE}/nlohmann_json
         ${THIRD_PARTY_LIB_BASE}/spdlog
+        ${THIRD_PARTY_LIB_BASE}/libevent
         )
 set(THIRD_PARTY_LIBS_INC ${THIRD_PARTY_LIBS})
 set(THIRD_PARTY_LIBS_LINK ${THIRD_PARTY_LIBS})
