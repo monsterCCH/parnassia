@@ -10,11 +10,11 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-class CRedisPublisher
+class redisAsyncOpt
 {
-public:    
-    CRedisPublisher();
-    ~CRedisPublisher();
+public:
+    explicit redisAsyncOpt(std::string ip = "127.0.0.1", int port = 6379);
+    ~redisAsyncOpt() = default;
 
     bool init();
     bool uninit();
@@ -25,7 +25,6 @@ public:
                  const std::string &message);
 
 private:
-    // 下面三个回调函数供redis服务调用
     // 连接回调
     static void connect_callback(const redisAsyncContext *redis_context,
                                  int status);
@@ -48,9 +47,12 @@ private:
     // 事件线程ID
     pthread_t _event_thread;
     // 事件线程的信号量
-    sem_t _event_sem;
+    sem_t _event_sem{};
     // hiredis异步对象
     redisAsyncContext *_redis_context;
+
+    std::string _ip;
+    int _port;
 };
 
 #endif

@@ -36,8 +36,9 @@ target_compile_options(${PROJECT_NAME}
 #设置链接目标
 target_link_libraries(${PROJECT_NAME}
         PRIVATE
-        libhiredis_cluster.a
+#        libhiredis_cluster.a
         libhiredis.a
         event
+        redis++
         #        -fsanitize=address
         )

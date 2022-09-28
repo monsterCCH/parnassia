@@ -8,7 +8,7 @@
 #include "config.h"
 #include "host_info.h"
 #include "redis_cl_manager.h"
-#include "redis_publish.h"
+#include "redis_async_opt.h"
 
 const std::string PROC_NAME = "parnassia";
 static std::string pid_file = "/var/run/" + PROC_NAME + ".pid";
@@ -142,30 +142,27 @@ int main(int argc, char* argv[])
     hostInfo hi;
     std::shared_ptr<redisClManager> redis_ptr= std::make_shared<redisClManager>(CONFIG::config::instance().get_redisCluster());
 //    redisInit();
-    CRedisPublisher publisher;
-
-    bool ret = publisher.init();
-    if (!ret)
-    {
-        printf("Init failed.\n");
-        return 0;
-    }
-
-    ret = publisher.connect();
-    if (!ret)
-    {
-        printf("connect failed.");
-        return 0;
-    }
+//    redisPublisher publisher;
+//
+//    bool ret = publisher.init();
+//    if (!ret)
+//    {
+//        printf("Init failed.\n");
+//        return 0;
+//    }
+//
+//    ret = publisher.connect();
+//    if (!ret)
+//    {
+//        printf("connect failed.");
+//        return 0;
+//    }
 
     while (g_program_run) {
         hi.flush();
         string res = hi.genHwInfoJson();
-        stringstream ss;
-        ss << "PUBLISH hw_info " << res ;
-        LOG->info("{}", ss.str());
-//        redis_ptr->redisClCommand("", res);
-        publisher.publish("hw_info", res);
+        redis_ptr->redisPublish("hw_info", res);
+//        publisher.publish("hw_info", res);
         sleep(30);
         LOG->info("heart");
     }

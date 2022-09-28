@@ -97,7 +97,8 @@ message(STATUS "-DTHIRD_PARTY_LIB_BASE=${THIRD_PARTY_LIB_BASE}")
 # 设置依赖第三方库
 set(THIRD_PARTY_LIBS
         ${THIRD_PARTY_LIB_BASE}/google_test
-        ${THIRD_PARTY_LIB_BASE}/hiredis_cluster
+#        ${THIRD_PARTY_LIB_BASE}/hiredis_cluster
+        ${THIRD_PARTY_LIB_BASE}/redis-plus-plus
         ${THIRD_PARTY_LIB_BASE}/nlohmann_json
         ${THIRD_PARTY_LIB_BASE}/spdlog
         ${THIRD_PARTY_LIB_BASE}/libevent

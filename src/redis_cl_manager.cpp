@@ -1,113 +1,141 @@
-#include <event2/event.h>
 #include "redis_cl_manager.h"
-#include "hiredis_cluster/hircluster.h"
 #include "logger.h"
 #include "utils_string.h"
-#include <hiredis_cluster/adapters/libevent.h>
 #include <hiredis/hiredis.h>
-#include <hiredis/async.h>
-#include <hiredis/adapters/libevent.h>
+
 
 
 #define IP_PORT_SEPARATOR ':'
 
-void pubCallback(redisAsyncContext *c, void *r, void *privdata) {
-
-    redisReply *reply = (redisReply*)r;
-    if (reply == NULL){
-        LOG->warn("Response not recev");
-        return;
-    }
-    LOG->info("{} message published", (char *)privdata);
-//    redisAsyncDisconnect(c);
-}
-
-redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, struct timeval timeout)
+redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, struct timeval timeout) : tv(timeout)
 {
     for (const auto& iter : redis_info) {
         if (iter.type == 1) {
-            redisClusterContext* cc = redisClusterContextInit();
-            redisClusterSetOptionAddNodes(cc, iter.redis_server.c_str());
-            redisClusterSetOptionConnectTimeout(cc, timeout);
-            if (!iter.auth.empty()) {
-                redisClusterSetOptionUsername(cc, iter.auth.c_str());
-            }
-            if (!iter.passwd.empty()) {
-                redisClusterSetOptionPassword(cc, iter.passwd.c_str());
-            }
-            redisClusterConnect2(cc);
-            if (cc && cc->err) {
-                LOG->warn("Connect to {} fail, error : {}",
-                          iter.redis_server,
-                          cc->errstr);
-                continue;
-            }
-            vec_redisClContext.emplace_back(cc);
+            redisCLInit(iter);
         }
 
         if (iter.type == 0) {
-            char *p;
-            char *addr = const_cast<char *>(iter.redis_server.c_str());
-            if ((p = strrchr(addr, IP_PORT_SEPARATOR)) == NULL) {
-                LOG->warn("server address is incorrect, port separator missing");
-                continue ;
-            }
-
-            if (p - addr <= 0) { /* length until separator */
-                LOG->warn("server address is incorrect, address part missing");
-                continue ;
-            }
-            string ip = iter.redis_server.substr(0, p - addr);
-            p++; // remove separator character
-
-            if (strlen(p) <= 0) {
-                LOG->warn("server address is incorrect, port part missing");
-                continue ;
-            }
-
-            int port = hi_atoi((uint8_t *)p, strlen(p));
-            if (port <= 0) {
-                LOG->warn("server port is incorrect");
-                continue ;
-            }
-            redisAsyncContext* _redisContext = redisAsyncConnect(ip.c_str(), port);
-            if (!_redisContext->err) {
-                vec_redisAsynContext.emplace_back(_redisContext);
-            }
-
+            redisInit(iter);
         }
     }
 }
 
 redisClManager::~redisClManager()
 {
-    for (auto iter : vec_redisClContext) {
-        redisClusterFree(iter);
+    for (const auto& iter : vec_rRedis) {
+
+    }
+
+    for (const auto& iter : vec_redisPub) {
+        iter->disconnect();
+        iter->uninit();
     }
 }
 
-void redisClManager::redisClCommand(const std::string& cmd,
+void redisClManager::redisPublish(const std::string& command,
                                     const std::string& json)
 {
-//    for (auto& iter : vec_redisClContext) {
-//        redisReply *reply = (redisReply *)redisClusterCommand(iter, "PUBSUB hw_info %s", json.c_str());
-//        if (!reply || iter->err) {
-//            LOG->warn("redisClusterCommand error : {}",iter->errstr);
-//        }
-//    }
-
-    for (auto& iter : vec_redisAsynContext) {
-        int status;
-        struct event_base *base = event_base_new();
-        redisLibeventAttach(iter, base);
-        string command ("publish ");
-        command.append("hw_info ");
-        command.append(json);
-
-        status = redisAsyncCommand(iter,
-                                   pubCallback,
-                                   (char*)"hw_info", command.c_str());
-//        event_base_dispatch(base);
+    try {
+        for (const auto& iter : vec_rRedis) {
+            iter->publish(command, json);
+        }
+    } catch (exception& e) {
+        LOG->warn("{} publish fail", command);
     }
 
+
+    for (auto& iter : vec_redisPub) {
+        iter->publish(command, json);
+    }
+
+}
+void redisClManager::redisCLInit(const CONFIG::redisCluster& rc)
+{
+#if 0
+    redisClusterContext* cc = redisClusterContextInit();
+    redisClusterSetOptionAddNodes(cc, rc.redis_server.c_str());
+    redisClusterSetOptionConnectTimeout(cc, tv);
+    if (!rc.auth.empty()) {
+        redisClusterSetOptionUsername(cc, rc.auth.c_str());
+    }
+    if (!rc.passwd.empty()) {
+        redisClusterSetOptionPassword(cc, rc.passwd.c_str());
+    }
+    redisClusterConnect2(cc);
+    if (cc && cc->err) {
+        LOG->warn("Connect to {} fail, error : {}",
+                  rc.redis_server,
+                  cc->errstr);
+        return;
+    }
+    vec_redisClContext.emplace_back(cc);
+#endif
+    try {
+        std::pair<string, int> ip_port;
+        if (!parseServer(rc.redis_server, ip_port)) {
+            return ;
+        }
+        sw::redis::ConnectionOptions tmp;
+        tmp.host = ip_port.first;
+        tmp.port = ip_port.second;
+        tmp.password = rc.passwd;
+        sw::redis::Optional<sw::redis::ConnectionOptions> opts;
+        opts = sw::redis::Optional<sw::redis::ConnectionOptions>(tmp);
+        std::shared_ptr<sw::redis::RedisCluster> rcp = std::make_shared<sw::redis::RedisCluster>(*opts);
+        LOG->info("Connect to redis {}", rc.redis_server);
+        vec_rRedis.emplace_back(rcp);
+    } catch (exception& e) {
+        LOG->warn("redis cluster {} init fail : {}", rc.redis_server, e.what());
+    }
+
+}
+
+void redisClManager::redisInit(const CONFIG::redisCluster& rc) 
+{
+    std::pair<string, int> ip_port;
+    if (!parseServer(rc.redis_server, ip_port)) {
+        return ;
+    }
+    LOG->info("Connect to redis {}", rc.redis_server);
+    std::shared_ptr<redisAsyncOpt> rp = std::make_shared<redisAsyncOpt>(ip_port.first, ip_port.second);
+    bool ret = rp->init();
+    if (!ret) {
+        LOG->warn("redis {}:{0:d} init failed", ip_port.first, ip_port.second);
+        return;
+    }
+    LOG->info("Connect to redis {}:{0:d}", ip_port.first, ip_port.second);
+    ret = rp->connect();
+    if (!ret) {
+        LOG->warn("redis {}:{0:d} init failed", ip_port.first, ip_port.second);
+        return;
+    }
+    vec_redisPub.emplace_back(rp); 
+}
+bool redisClManager::parseServer(const string& server, std::pair<string, int>& ip_port)
+{
+    char *p;
+    char *addr = const_cast<char *>(server.c_str());
+    if ((p = strrchr(addr, IP_PORT_SEPARATOR)) == NULL) {
+        LOG->warn("server address is incorrect, port separator missing");
+        return false;
+    }
+
+    if (p - addr <= 0) {
+        LOG->warn("server address is incorrect, address part missing");
+        return false;
+    }
+    ip_port.first = server.substr(0, p - addr);
+    p++;
+
+    if (strlen(p) <= 0) {
+        LOG->warn("server address is incorrect, port part missing");
+        return false;
+    }
+
+    ip_port.second = hi_atoi((uint8_t *)p, strlen(p));
+    if (ip_port.second <= 0) {
+        LOG->warn("server port is incorrect");
+        return false;
+    }
+    return true;
 }
