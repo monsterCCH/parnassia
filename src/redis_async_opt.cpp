@@ -14,7 +14,6 @@ bool redisAsyncOpt::init()
 {
     // initialize the event
     _event_base = event_base_new();    // 创建libevent对象
-    _event = event_new(_event_base, -1, EV_TIMEOUT, reconnect, NULL);
     if (NULL == _event_base) {
         LOG->warn("Create redis event failed");
         return false;
@@ -117,17 +116,6 @@ void redisAsyncOpt::disconnect_callback(
 {
     if (status != REDIS_OK) {
         // 这里异常退出，可以尝试重连
-        LOG->warn("Error: {}", redis_context->errstr);
-        redis_context = redisAsyncConnect(ip.c_str(), _port);    // 异步连接到redis服务器上，使用默认端口
-        if (NULL == redis_context) {
-            LOG->warn("Connect redis {}:{0:d} failed", _ip, _port);
-            return;
-        }
-
-        if (redis_context->err) {
-            LOG->warn("Connect redis {}:{0:d} error: {0:d}, {}", _ip, _port,  redis_context->err, redis_context->errstr);
-            return;
-        }
     }
 }
 
