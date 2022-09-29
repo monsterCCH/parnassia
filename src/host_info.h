@@ -16,11 +16,13 @@ public:
 private:
     string getCpuUsage();
     void getMemInfo();
-    std::string get_dmi_value(const char* dmi_id);
+    string getIpAddress();
+    std::string getDmiValue(const char* dmi_id);
     vector<string> ip_set;
     string sys_id;
     string os_type;
     string os_name;
+    string net_ipv4;
     string cpu_usage;
     string mem_usage;
     string mem_available;

@@ -1,9 +1,11 @@
 #include "host_info.h"
 #include "cpu.hpp"
 #include "mem.hpp"
+#include "get_adapters.h"
 #include "utils_file.h"
 #include "utils_string.h"
 #include "nlohmann/json.hpp"
+
 
 string hostInfo::getCpuUsage()
 {
@@ -20,8 +22,9 @@ hostInfo::hostInfo()
         cpu_count = 1;
         LOG->warn("Could not determine number of cores, defaulting to 1");
     }
-    sys_id = get_dmi_value("/sys/class/dmi/id/product_uuid");
+    sys_id = getDmiValue("/sys/class/dmi/id/product_uuid");
     cpu_usage = getCpuUsage();
+    net_ipv4 = getIpAddress();
     getMemInfo();
 }
 
@@ -37,8 +40,9 @@ void hostInfo::flush()
 {
     cpu_usage = getCpuUsage();
     getMemInfo();
+    net_ipv4 = getIpAddress();
 }
-std::string hostInfo::get_dmi_value(const char* dmi_id)
+std::string hostInfo::getDmiValue(const char* dmi_id)
 {
     std::string res;
     try {
@@ -61,5 +65,14 @@ string hostInfo::genHwInfoJson()
     js["memPercent"] = mem_usage;
     js["memTotal"] = mem_total;
     js["memAvail"] = mem_available;
+    js["systemIp"] = net_ipv4;
     return js.dump();
+}
+string hostInfo::getIpAddress()
+{
+    NET::NetAdapterInfo adapter_info;
+    if (getDefAdapterInfo(adapter_info) != FUNC_RET_OK) {
+        return {};
+    }
+    return NET::ipv4ToString(adapter_info.ipv4_address);
 }

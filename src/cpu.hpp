@@ -5,8 +5,9 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include "base.h"
 
-namespace CPU {
+BEGIN_NAMESPACE(CPU)
 
 enum CPUStates
 {
@@ -90,7 +91,7 @@ std::string getCpuUsage()
     ss << (100.f * ACTIVE_TIME / TOTAL_TIME);
     return ss.str();
 }
-}
+END_NAMESPACE
 
 
 #endif   // PARNASSIA_TRINERVIS_CPU_HPP
