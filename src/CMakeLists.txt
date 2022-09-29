@@ -40,5 +40,6 @@ target_link_libraries(${PROJECT_NAME}
         libhiredis.a
         event
         redis++
+        pthread
         #        -fsanitize=address
         )
