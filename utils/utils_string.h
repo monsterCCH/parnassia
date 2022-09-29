@@ -14,4 +14,10 @@ size_t mstrlcpy(char* dst, const char* src, size_t n);
 
 int hi_atoi(uint8_t *line, size_t n);
 
+template<typename First, typename ... T>
+inline bool is_in(const First& first, const T& ... t) {
+    return ((first == t) or ...);
+}
+
+
 #endif // JNILICENSE_UTILS_STRING_H_

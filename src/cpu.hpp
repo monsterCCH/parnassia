@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <iomanip>
 #include "base.h"
 
 BEGIN_NAMESPACE(CPU)
@@ -88,7 +89,7 @@ std::string getCpuUsage()
     const float IDLE_TIME	= static_cast<float>(GetIdleTime(e2) - GetIdleTime(e1));
     const float TOTAL_TIME	= ACTIVE_TIME + IDLE_TIME;
     std::stringstream ss;
-    ss << (100.f * ACTIVE_TIME / TOTAL_TIME);
+    ss << std::fixed << std::setprecision(2) << (100.f * ACTIVE_TIME / TOTAL_TIME);
     return ss.str();
 }
 END_NAMESPACE

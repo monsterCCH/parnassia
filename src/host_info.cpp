@@ -14,7 +14,7 @@ string hostInfo::getCpuUsage()
 
 hostInfo::hostInfo()
 {
-    if (!file_exists(procPath)) {
+    if (!dir_exists(procPath)) {
         LOG->error("Proc filesystem not found or no permission, host info can't get");
     }
     cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
@@ -26,6 +26,7 @@ hostInfo::hostInfo()
     cpu_usage = getCpuUsage();
     net_ipv4 = getIpAddress();
     getMemInfo();
+    disk_info = DISK::getDiskInfos();
 }
 
 void hostInfo::getMemInfo()
@@ -41,6 +42,7 @@ void hostInfo::flush()
     cpu_usage = getCpuUsage();
     getMemInfo();
     net_ipv4 = getIpAddress();
+    disk_info = DISK::getDiskInfos();
 }
 std::string hostInfo::getDmiValue(const char* dmi_id)
 {
@@ -60,12 +62,21 @@ string hostInfo::genHwInfoJson()
 {
     nlohmann::json js;
     js["sysId"] = sys_id;
-    js["cpuPercent"] = cpu_usage;
+    js["cpuPercent"] = cpu_usage + "%";
     js["cpuPoint"] = cpu_count;
-    js["memPercent"] = mem_usage;
+    js["memPercent"] = mem_usage + "%";
     js["memTotal"] = mem_total;
     js["memAvail"] = mem_available;
     js["systemIp"] = net_ipv4;
+    nlohmann::json::array_t disk_array;
+    for (auto& iter : disk_info) {
+        nlohmann::json array = nlohmann::json::object();
+        array.push_back({"mountPoint", iter.monunt_point});
+        array.push_back({"diskTotal", to_string(iter.total / MB) + "Mib"});
+        array.push_back({"diskAvail", to_string(iter.free / MB) + "Mib"});
+        array.push_back({"diskUsage", to_string(iter.used_percent) + "%"});
+        js["diskInfo"].push_back(array);
+    }
     return js.dump();
 }
 string hostInfo::getIpAddress()

@@ -2,6 +2,7 @@
 #define PARNASSIA_TRINERVIS_HOST_INFO_H
 #include <string>
 #include <vector>
+#include "disk.h"
 
 using namespace std;
 
@@ -27,9 +28,10 @@ private:
     string mem_usage;
     string mem_available;
     string mem_total;
+    vector<DISK::DiskInfo> disk_info;
 
     long         cpu_count;
-    const string procPath = "/proc/stat";
+    const string procPath = "/proc";
     long clk_tck;
     long page_size;
 };
