@@ -94,11 +94,17 @@ string hostInfo::genDockerInfoJson()
 }
 string hostInfo::genDockerImageJson()
 {
-    return getCmdResult("docker images --no-trunc --format '{{json .}}'");
+    // 不要调整格式，换行是为了输入\n
+    string res = getCmdResult(R"(echo "[$(IFS=$'
+'; for line in $(docker images --no-trunc --format="{{json .}}"); do echo -n "${line},"; done;)]")");
+    return res.substr(0, res.find_last_of(',')) + "]";
 }
 string hostInfo::genDockerContainerJson()
 {
-    return getCmdResult("docker container ls -a --no-trunc --format '{{json .}}'");
+    // 不要调整格式，换行是为了输入\n
+    string res = getCmdResult(R"(echo "[$(IFS=$'
+'; for line in $(docker container ls -a --no-trunc --format="{{json .}}"); do echo -n "${line},"; done;)]")");
+    return res.substr(0, res.find_last_of(',')) + "]";
 }
 string hostInfo::getCmdResult(const string& cmd)
 {
