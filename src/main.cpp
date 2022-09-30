@@ -9,15 +9,28 @@
 #include "host_info.h"
 #include "redis_cl_manager.h"
 #include "redis_async_opt.h"
+#include "timer.h"
+
+LPTIMERMANAGER g_ptr_tmr_mgr;       //全局定时器管理
+typedef struct {
+    std::shared_ptr<hostInfo> hi_ptr;
+    std::shared_ptr<redisClManager> rcm_ptr;
+}RedisPublishParam;
+void RedisPublishHwInfo(void *pParam);
+void RedisPublishDockerInfo(void *pParam);
+void RedisPublishDockerImage(void *pParam);
+void RedisPublishDockerContainer(void *pParam);
 
 const std::string PROC_NAME = "parnassia";
 static std::string pid_file = "/var/run/" + PROC_NAME + ".pid";
 volatile int g_program_run = 1;
 static int isRunning(pid_t& pid);
-static void sigExit(int signo);
+[[deprecated("g_program_run not be used")]] static void sigExit(int signo);
 void redisInit();
 
 enum class run_model{START = 0, STOP, DEBUG, MODEL_END };
+
+
 
 void Usage()
 {
@@ -70,12 +83,12 @@ int main(int argc, char* argv[])
         int i = 0;
         int ret = isRunning(opid);
         if (ret) {
-            kill(opid, SIGTERM);
+            kill(opid, SIGTERM); //尝试优雅退出
             do {
-                sleep(2);
+                sleep(3);
                 ret = isRunning(opid);
                 i++;
-            } while (ret && i < 10);  //进程还存在并且最多检查10次
+            } while (ret && i < 1);  //进程还存在并且最多检查1次
 
             if (ret) {
                 kill(opid, SIGKILL); //防止没有关闭，强制关闭
@@ -139,33 +152,24 @@ int main(int argc, char* argv[])
         LOG->error("{}", e.what());
     }
 
-    hostInfo hi;
+//    hostInfo hi;
+    std::shared_ptr<hostInfo> hi_ptr = std::make_shared<hostInfo>();
     std::shared_ptr<redisClManager> redis_ptr= std::make_shared<redisClManager>(CONFIG::config::instance().get_redisCluster());
-//    redisInit();
-//    redisPublisher publisher;
-//
-//    bool ret = publisher.init();
-//    if (!ret)
-//    {
-//        printf("Init failed.\n");
-//        return 0;
-//    }
-//
-//    ret = publisher.connect();
-//    if (!ret)
-//    {
-//        printf("connect failed.");
-//        return 0;
-//    }
 
-    while (g_program_run) {
-        hi.flush();
-        string res = hi.genHwInfoJson();
-        redis_ptr->redisPublish("hw_info", res);
-//        publisher.publish("hw_info", res);
-        sleep(30);
-        LOG->info("heart");
-    }
+    g_ptr_tmr_mgr = CreateTimerManager();
+    RedisPublishParam param = {hi_ptr, redis_ptr};
+    CreateTimer(g_ptr_tmr_mgr, &RedisPublishHwInfo, &param, 0, 30 * 1000);
+    CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerInfo, &param, 0, 30 * 1000);
+    CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerImage, &param, 0, 30 * 1000);
+    CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerContainer, &param, 0, 30 * 1000);
+    pthread_join(g_ptr_tmr_mgr->thread, nullptr);
+//    while (g_program_run) {
+//        hi.flush();
+//        string res = hi.genHwInfoJson();
+//        redis_ptr->redisPublish("hw_info", res);
+//        sleep(30);
+//        LOG->info("heart");
+//    }
     return 0;
 }
 
@@ -211,4 +215,37 @@ void sigExit(int signo)
 void redisInit()
 {
     redisClManager instance{CONFIG::config::instance().get_redisCluster()};
+}
+
+void RedisPublishHwInfo(void *pParam)
+{
+    RedisPublishParam* ptr = (RedisPublishParam *)pParam;
+    ptr->hi_ptr->flushHwInfo();
+    string res = ptr->hi_ptr->genHwInfoJson();
+    ptr->rcm_ptr->redisPublish("hw_info", res);
+    LOG->debug("publish hw_info {}", res);
+}
+
+void RedisPublishDockerInfo(void *pParam)
+{
+    RedisPublishParam* ptr = (RedisPublishParam *)pParam;
+    string res = ptr->hi_ptr->genDockerInfoJson();
+    ptr->rcm_ptr->redisPublish("docker_info", res);
+    LOG->debug("publish docker_info {}", res);
+}
+
+void RedisPublishDockerImage(void *pParam)
+{
+    RedisPublishParam* ptr = (RedisPublishParam *)pParam;
+    string res = ptr->hi_ptr->genDockerImageJson();
+    ptr->rcm_ptr->redisPublish("docker_image", res);
+    LOG->debug("publish docker_image {}", res);
+}
+
+void RedisPublishDockerContainer(void *pParam)
+{
+    RedisPublishParam* ptr = (RedisPublishParam *)pParam;
+    string res = ptr->hi_ptr->genDockerContainerJson();
+    ptr->rcm_ptr->redisPublish("docker_container", res);
+    LOG->debug("publish docker_container {}", res);
 }

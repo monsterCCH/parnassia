@@ -37,7 +37,7 @@ void hostInfo::getMemInfo()
     mem_total = mi.getMb(mi.mem_total);
 }
 
-void hostInfo::flush()
+void hostInfo::flushHwInfo()
 {
     cpu_usage = getCpuUsage();
     getMemInfo();
@@ -61,20 +61,21 @@ std::string hostInfo::getDmiValue(const char* dmi_id)
 string hostInfo::genHwInfoJson()
 {
     nlohmann::json js;
-    js["sysId"] = sys_id;
-    js["cpuPercent"] = cpu_usage + "%";
-    js["cpuPoint"] = cpu_count;
-    js["memPercent"] = mem_usage + "%";
-    js["memTotal"] = mem_total;
-    js["memAvail"] = mem_available;
-    js["systemIp"] = net_ipv4;
+    js[InfoItemMap[II_SYS_ID]] = sys_id;
+    js[InfoItemMap[II_NET_ADDR]] = net_ipv4;
+    js[InfoItemMap[II_CPU_USAGE]] = cpu_usage + "%";
+    js[InfoItemMap[II_CPU_COUNT]] = cpu_count;
+    js[InfoItemMap[II_MEM_USAGE]] = mem_usage + "%";
+    js[InfoItemMap[II_MEM_TOTAL]] = mem_total;
+    js[InfoItemMap[II_MEM_AVAILABLE]] = mem_available;
+
     nlohmann::json::array_t disk_array;
     for (auto& iter : disk_info) {
         nlohmann::json array = nlohmann::json::object();
-        array.push_back({"mountPoint", iter.monunt_point});
-        array.push_back({"diskTotal", to_string(iter.total / MB) + "Mib"});
-        array.push_back({"diskAvail", to_string(iter.free / MB) + "Mib"});
-        array.push_back({"diskUsage", to_string(iter.used_percent) + "%"});
+        array.push_back({InfoItemMap[II_DISK_MOUNT], iter.monunt_point});
+        array.push_back({InfoItemMap[II_DISK_TOTAL], to_string(iter.total / MB) + "Mib"});
+        array.push_back({InfoItemMap[II_DISK_AVAILABLE], to_string(iter.free / MB) + "Mib"});
+        array.push_back({InfoItemMap[II_DISK_USAGE], to_string(iter.used_percent) + "%"});
         js["diskInfo"].push_back(array);
     }
     return js.dump();
@@ -86,4 +87,34 @@ string hostInfo::getIpAddress()
         return {};
     }
     return NET::ipv4ToString(adapter_info.ipv4_address);
+}
+string hostInfo::genDockerInfoJson()
+{
+    return getCmdResult("docker info --format '{{json .}}'");
+}
+string hostInfo::genDockerImageJson()
+{
+    return getCmdResult("docker images --no-trunc --format '{{json .}}'");
+}
+string hostInfo::genDockerContainerJson()
+{
+    return getCmdResult("docker container ls -a --no-trunc --format '{{json .}}'");
+}
+string hostInfo::getCmdResult(const string& cmd)
+{
+    stringstream ss;
+    FILE *fp = NULL;
+    char buf[1024]={0};
+    fp = popen(cmd.c_str(), "r");
+    if(fp) {
+        while (fgets(buf, sizeof(buf), fp) != nullptr) {
+            int size = strlen(buf);
+            if (buf[size - 1] == '\n' || buf[size - 1] == '\r') {
+                buf[size - 1] = 0;
+            }
+            ss << buf;
+        }
+        pclose(fp);
+    }
+    return ss.str();
 }
