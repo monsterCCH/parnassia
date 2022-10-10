@@ -90,21 +90,51 @@ string hostInfo::getIpAddress()
 }
 string hostInfo::genDockerInfoJson()
 {
-    return getCmdResult("docker info --format '{{json .}}'");
+    string res = getCmdResult("docker info --format '{{json .}}'");
+    try {
+        nlohmann::json js = nlohmann::json::parse(res);
+        js[InfoItemMap[II_SYS_ID]] = sys_id;
+        return js.dump();
+    } catch (exception& e) {
+        LOG->warn("docker info json parser error : {}", e.what());
+    }
+    return {};
+//    return getCmdResult("docker info --format '{{json .}}'");
+
 }
 string hostInfo::genDockerImageJson()
 {
     // 不要调整格式，换行是为了输入\n
     string res = getCmdResult(R"(echo "[$(IFS=$'
 '; for line in $(docker images --no-trunc --format="{{json .}}"); do echo -n "${line},"; done;)]")");
-    return res.substr(0, res.find_last_of(',')) + "]";
+    res = res.substr(0, res.find_last_of(',')) + "]";
+    try {
+        nlohmann::json::array_t array = nlohmann::json::parse(res);
+        nlohmann::json js;
+        js["docker_image"] = array;
+        js[InfoItemMap[II_SYS_ID]] = sys_id;
+        return js.dump();
+    } catch (exception& e) {
+        LOG->warn("docker info json parser error : {}", e.what());
+    }
+    return {};
 }
 string hostInfo::genDockerContainerJson()
 {
     // 不要调整格式，换行是为了输入\n
     string res = getCmdResult(R"(echo "[$(IFS=$'
 '; for line in $(docker container ls -a --no-trunc --format="{{json .}}"); do echo -n "${line},"; done;)]")");
-    return res.substr(0, res.find_last_of(',')) + "]";
+    res = res.substr(0, res.find_last_of(',')) + "]";
+    try {
+        nlohmann::json::array_t array = nlohmann::json::parse(res);
+        nlohmann::json js;
+        js["docker_container"] = array;
+        js[InfoItemMap[II_SYS_ID]] = sys_id;
+        return js.dump();
+    } catch (exception& e) {
+        LOG->warn("docker info json parser error : {}", e.what());
+    }
+    return {};
 }
 string hostInfo::getCmdResult(const string& cmd)
 {

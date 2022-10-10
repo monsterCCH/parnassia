@@ -4,6 +4,8 @@
 #include <cstring>
 #include <utility>
 #include "logger.h"
+#include "nlohmann/json.hpp"
+#include "redis_cl_manager.h"
 
 redisAsyncOpt::redisAsyncOpt(std::string  ip, int port)
     :_event_base(nullptr), _event_thread(0), _redis_context(nullptr), _ip(std::move(ip)), _port(port)
@@ -119,11 +121,46 @@ void redisAsyncOpt::disconnect_callback(
     }
 }
 
-// 消息接收回调函数
 void redisAsyncOpt::command_callback(redisAsyncContext *redis_context,
-                                       void *reply, void *privdata)
+                             void *reply, void *privdata)
 {
-    // 这里不执行任何操作
+    // do nothing
+}
+
+// 订阅接收回调函数
+void redisAsyncOpt::subscriber_callback(redisAsyncContext *redis_context,
+                                       void *r, void *privdata)
+{
+    redisReply *reply = (redisReply*)r;
+    if (reply == nullptr){
+        return;
+    }
+    if(reply->type == REDIS_REPLY_ARRAY & reply->elements == 3)
+    {
+        if(strcmp( reply->element[0]->str,"subscribe") != 0)
+        {
+            std::string rec = reply->element[2]->str;
+            try {
+                nlohmann::json js = nlohmann::json::parse(rec);
+                std::string host_id;
+                auto obj = js.find("hostId");
+                if (obj != js.end()) {
+                    host_id = obj.value();
+                }
+
+                if (host_id == redisClManager::getHostIp()) {
+                    std::vector<std::string> command = js["command"];
+                    for (const auto& iter : command) {
+                        std::string res;
+                        redisClManager::execute(iter, res);
+                    }
+                }
+            }
+            catch (std::exception& e) {
+                LOG->warn("Invalid json string {} : {}", rec, e.what());
+            }
+        }
+    }
 }
 
 void * redisAsyncOpt::event_thread(void *data)
@@ -144,4 +181,24 @@ void * redisAsyncOpt::event_proc()
     event_base_dispatch(_event_base);
 
     return NULL;
+}
+bool redisAsyncOpt::set_subscriber(std::vector<std::string>& topics)
+{
+    for (const auto& iter : topics) {
+        int ret = redisAsyncCommand(_redis_context,
+                                    &redisAsyncOpt::subscriber_callback, this, "SUBSCRIBE %s",
+                                    iter.c_str());
+        if (REDIS_ERR == ret) {
+            LOG->warn("SUBSCRIBE command failed: {0:d}", ret);
+            return false;
+        }
+    }
+    return true;
+}
+bool redisAsyncOpt::create()
+{
+    if (init() && connect()) {
+        return true;
+    }
+    return false;
 }

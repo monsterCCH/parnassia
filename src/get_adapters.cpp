@@ -14,8 +14,6 @@ const string NET_ROUTE_FILEPATH = "/proc/net/route";
 
 FUNCTION_RETURN getAdaptersInfo(unordered_map<string, NetAdapterInfo>& name_adapter)
 {
-
-
     FUNCTION_RETURN ret = FUNC_RET_OK;
     struct ifaddrs *ifaddr, *ifa;
     int family, n = 0;

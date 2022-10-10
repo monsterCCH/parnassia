@@ -230,6 +230,10 @@ void RedisPublishDockerInfo(void *pParam)
 {
     RedisPublishParam* ptr = (RedisPublishParam *)pParam;
     string res = ptr->hi_ptr->genDockerInfoJson();
+    if (res.empty()) {
+        LOG->debug("docker info empty");
+        return;
+    }
     ptr->rcm_ptr->redisPublish("docker_info", res);
     LOG->debug("publish docker_info {}", res);
 }
@@ -238,6 +242,10 @@ void RedisPublishDockerImage(void *pParam)
 {
     RedisPublishParam* ptr = (RedisPublishParam *)pParam;
     string res = ptr->hi_ptr->genDockerImageJson();
+    if (res.empty()) {
+        LOG->debug("docker image empty");
+        return;
+    }
     ptr->rcm_ptr->redisPublish("docker_image", res);
     LOG->debug("publish docker_image {}", res);
 }
@@ -246,6 +254,10 @@ void RedisPublishDockerContainer(void *pParam)
 {
     RedisPublishParam* ptr = (RedisPublishParam *)pParam;
     string res = ptr->hi_ptr->genDockerContainerJson();
+    if (res.empty()) {
+        LOG->debug("docker container empty");
+        return;
+    }
     ptr->rcm_ptr->redisPublish("docker_container", res);
     LOG->debug("publish docker_container {}", res);
 }

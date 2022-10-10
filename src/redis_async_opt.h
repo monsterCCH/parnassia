@@ -16,9 +16,11 @@ public:
     explicit redisAsyncOpt(std::string ip = "127.0.0.1", int port = 6379);
     ~redisAsyncOpt() = default;
 
+    bool create();
     bool init();
     bool uninit();
     bool connect();
+    bool set_subscriber(std::vector<std::string>& topics);
     bool disconnect();
     
     bool publish(const std::string &channel_name, 
@@ -35,6 +37,9 @@ private:
 
     // 执行命令回调
     static void command_callback(redisAsyncContext *redis_context,
+                                 void *reply, void *privdata);
+    // 订阅消息回调
+    static void subscriber_callback(redisAsyncContext *redis_context,
                                  void *reply, void *privdata);
 
     // 事件分发线程函数

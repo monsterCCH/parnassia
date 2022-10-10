@@ -2,16 +2,30 @@
 #include "logger.h"
 #include "utils_string.h"
 #include <hiredis/hiredis.h>
-
-
+#include "get_adapters.h"
+#include "nlohmann/json.hpp"
+#include "timer.h"
+using namespace std;
 
 #define IP_PORT_SEPARATOR ':'
 
+std::map<int, std::string> redisClManager::TopicMap = {
+    {static_cast<int>(TOPICS::DOCKER_COMMAND), "DockerInstructions"}
+};
+
+string redisClManager::host_ip = {};
+
 redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, struct timeval timeout) : tv(timeout)
 {
+    NET::NetAdapterInfo adapter_info;
+    if (getDefAdapterInfo(adapter_info) == FUNC_RET_OK) {
+        host_ip = NET::ipv4ToString(adapter_info.ipv4_address);
+    }
+    redisSubInit();
     for (const auto& iter : redis_info) {
         if (iter.type == 1) {
             redisCLInit(iter);
+            redisCLSubscriber();
         }
 
         if (iter.type == 0) {
@@ -22,11 +36,12 @@ redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, s
 
 redisClManager::~redisClManager()
 {
-    for (const auto& iter : vec_rRedis) {
-
+    for (const auto& iter : vec_redisAsyncSubscriber) {
+        iter->disconnect();
+        iter->uninit();
     }
 
-    for (const auto& iter : vec_redisPub) {
+    for (const auto& iter : vec_redisAsyncPublish) {
         iter->disconnect();
         iter->uninit();
     }
@@ -36,7 +51,7 @@ void redisClManager::redisPublish(const std::string& command,
                                     const std::string& json)
 {
     try {
-        for (const auto& iter : vec_rRedis) {
+        for (const auto& iter : vec_rRedisCl) {
             iter->publish(command, json);
         }
     } catch (exception& e) {
@@ -44,11 +59,12 @@ void redisClManager::redisPublish(const std::string& command,
     }
 
 
-    for (auto& iter : vec_redisPub) {
+    for (auto& iter : vec_redisAsyncPublish) {
         iter->publish(command, json);
     }
 
 }
+
 void redisClManager::redisCLInit(const CONFIG::redisCluster& rc)
 {
 #if 0
@@ -83,7 +99,7 @@ void redisClManager::redisCLInit(const CONFIG::redisCluster& rc)
         opts = sw::redis::Optional<sw::redis::ConnectionOptions>(tmp);
         std::shared_ptr<sw::redis::RedisCluster> rcp = std::make_shared<sw::redis::RedisCluster>(*opts);
         LOG->info("Connect to redis {}", rc.redis_server);
-        vec_rRedis.emplace_back(rcp);
+        vec_rRedisCl.emplace_back(rcp);
     } catch (exception& e) {
         LOG->warn("redis cluster {} init fail : {}", rc.redis_server, e.what());
     }
@@ -98,19 +114,27 @@ void redisClManager::redisInit(const CONFIG::redisCluster& rc)
     }
     LOG->info("Connect to redis {}", rc.redis_server);
     std::shared_ptr<redisAsyncOpt> rp = std::make_shared<redisAsyncOpt>(ip_port.first, ip_port.second);
-    bool ret = rp->init();
+    bool ret = rp->create();
     if (!ret) {
-        LOG->warn("redis {}:{0:d} init failed", ip_port.first, ip_port.second);
+        LOG->warn("redis {}:{0:d} create failed", ip_port.first, ip_port.second);
         return;
     }
-    LOG->info("Connect to redis {}:{0:d}", ip_port.first, ip_port.second);
-    ret = rp->connect();
+    vec_redisAsyncPublish.emplace_back(rp);
+
+    rp = std::make_shared<redisAsyncOpt>(ip_port.first, ip_port.second);
+    ret = rp->create();;
     if (!ret) {
-        LOG->warn("redis {}:{0:d} init failed", ip_port.first, ip_port.second);
+        LOG->warn("redis {}:{0:d} create failed", ip_port.first, ip_port.second);
         return;
     }
-    vec_redisPub.emplace_back(rp); 
+    ret = rp->set_subscriber(vec_topic);
+    if (!ret) {
+        LOG->warn("redis {}:{0:d} set_subscriber failed", ip_port.first, ip_port.second);
+        return;
+    }
+    vec_redisAsyncSubscriber.push_back(rp);
 }
+
 bool redisClManager::parseServer(const string& server, std::pair<string, int>& ip_port)
 {
     char *p;
@@ -138,4 +162,82 @@ bool redisClManager::parseServer(const string& server, std::pair<string, int>& i
         return false;
     }
     return true;
+}
+
+void redisClManager::redisSubInit()
+{
+    for (const auto& iter : TopicMap) {
+        vec_topic.push_back(iter.second);
+    }
+}
+
+void redisClManager::redisCLSubscriber()
+{
+    for (const auto& iter : vec_rRedisCl) {
+        for (const auto& it : vec_topic) {
+            auto * param = new SubParam();
+            param->hostIp = host_ip;
+            param->topic = it;
+            param->instance = iter;
+            pthread_t t = ThreadCreate(redisCLsub, param);
+            pthread_detach(t);
+        }
+    }
+}
+[[noreturn]] void* redisClManager::redisCLsub(void* param)
+{
+    for(;;) {
+        try {
+            auto* pa  = (SubParam*) param;
+            auto  sub = pa->instance->subscriber();
+            sub.on_message([&pa](const string& channel, const string& msg) {
+                try {
+                    nlohmann::json js = nlohmann::json::parse(msg);
+                    string host_id;
+                    auto obj = js.find("hostId");
+                    if (obj != js.end()) {
+                        host_id = obj.value();
+                    }
+
+                    if (host_id == pa->hostIp) {
+                        vector<string> command = js["command"];
+                        for (const auto& iter : command) {
+                            string res;
+                            execute(iter, res);
+                        }
+                    }
+                }
+                catch (exception& e) {
+                    LOG->warn("Invalid json string {} : {}", msg, e.what());
+                }
+            });
+
+            sub.subscribe(pa->topic);
+            for (;;) {
+                sub.consume();
+                usleep(1000);
+            }
+        } catch (exception& e) {
+            LOG->warn("redis_cluster subscriber error : {}", e.what());
+        }
+    }
+}
+int redisClManager::execute(std::string cmd, string& output)
+{
+    const int size = 128;
+    std::array<char, size> buffer{};
+
+    auto pipe = popen(cmd.c_str(), "r");
+    if (!pipe) throw std::runtime_error("popen() failed!");
+
+    size_t count;
+    do {
+        if ((count = fread(buffer.data(), 1, size, pipe)) > 0) {
+            output.insert(output.end(),
+                          std::begin(buffer),
+                          std::next(std::begin(buffer), count));
+        }
+    } while (count > 0);
+
+    return pclose(pipe);
 }
