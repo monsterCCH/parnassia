@@ -115,7 +115,7 @@ string hostInfo::genDockerImageJson()
         js[InfoItemMap[II_SYS_ID]] = sys_id;
         return js.dump();
     } catch (exception& e) {
-        LOG->warn("docker info json parser error : {}", e.what());
+        LOG->warn("docker image json parser error : {}", e.what());
     }
     return {};
 }
@@ -132,7 +132,7 @@ string hostInfo::genDockerContainerJson()
         js[InfoItemMap[II_SYS_ID]] = sys_id;
         return js.dump();
     } catch (exception& e) {
-        LOG->warn("docker info json parser error : {}", e.what());
+        LOG->warn("docker container json parser error : {}", e.what());
     }
     return {};
 }
