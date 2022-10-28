@@ -23,7 +23,8 @@ start(){
   if [ $? -eq "0" ]; then
     echo "${APP_NAME} is already running. pid=${pid} ."
   else
-    $APP_NAME -r start >/dev/null 2>&1
+    export LD_LIBRARY_PATH=$(pwd);./$APP_NAME -r start
+#>/dev/null 2>&1
   fi
 }
 
@@ -31,7 +32,8 @@ start(){
 stop(){
   is_exist
   if [ $? -eq "0" ]; then
-    $APP_NAME -r stop >/dev/null 2>&1
+    export LD_LIBRARY_PATH=$(pwd);./$APP_NAME -r stop
+# >/dev/null 2>&1
   else
     echo "${APP_NAME} is not running"
   fi
