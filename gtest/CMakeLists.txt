@@ -26,7 +26,7 @@ add_executable(${PROJECT_NAME}
         )
 
 #设置编译属性
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_11)
 
 #设置编译选项
 target_compile_options(${PROJECT_NAME}

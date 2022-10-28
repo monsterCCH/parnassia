@@ -7,8 +7,8 @@
 #include "nlohmann/json.hpp"
 #include "redis_cl_manager.h"
 
-redisAsyncOpt::redisAsyncOpt(std::string  ip, int port)
-    :_event_base(nullptr), _event_thread(0), _redis_context(nullptr), _ip(std::move(ip)), _port(port)
+redisAsyncOpt::redisAsyncOpt(std::string pass, std::string ip, int port)
+    :_event_base(nullptr), _event_thread(0), _redis_context(nullptr), _ip(std::move(ip)), _port(port), _pass(std::move(pass))
 {
 }
 
@@ -51,6 +51,16 @@ bool redisAsyncOpt::connect()
     if (_redis_context->err) {
         LOG->warn("Connect redis {}:{0:d} error: {0:d}, {}", _ip, _port,  _redis_context->err, _redis_context->errstr);
         return false;
+    }
+
+    if (!_pass.empty()) {
+        int ret = redisAsyncCommand(_redis_context,
+                                    &redisAsyncOpt::auth_callback, this, "AUTH %s",
+                                    _pass.c_str());
+        if (REDIS_ERR == ret) {
+            LOG->warn("Publish command failed: {0:d}", ret);
+            return false;
+        }
     }
 
     // attach the event
@@ -121,6 +131,24 @@ void redisAsyncOpt::disconnect_callback(
     }
 }
 
+void redisAsyncOpt::auth_callback(redisAsyncContext *redis_context,
+                                  void *r, void *privdata)
+{
+    redisReply *reply = (redisReply*)r;
+    if (reply == nullptr){
+        return;
+    }
+
+    if (reply->type == REDIS_REPLY_ERROR) {
+        LOG->warn("AUTH Reply: {}", reply->str);
+        return;
+    }
+    else if (reply->type != REDIS_REPLY_STATUS) {
+        LOG->warn("AUTH Reply unknown: {0:d}", reply->type);
+        return;
+    }
+}
+
 void redisAsyncOpt::command_callback(redisAsyncContext *redis_context,
                              void *reply, void *privdata)
 {
@@ -143,17 +171,36 @@ void redisAsyncOpt::subscriber_callback(redisAsyncContext *redis_context,
             try {
                 nlohmann::json js = nlohmann::json::parse(rec);
                 std::string host_id;
-                auto obj = js.find("hostId");
+                std::string msg_id;
+                auto obj = js.find("robotId");
                 if (obj != js.end()) {
                     host_id = obj.value();
                 }
+                obj = js.find("msgId");
+                if (obj != js.end()) {
+                    msg_id = obj.value();
+                }
 
-                if (host_id == redisClManager::getHostIp()) {
+                if (host_id == redisClManager::getHostId()) {
                     std::vector<std::string> command = js["command"];
+                    std::vector<std::string> results;
+                    results.reserve(command.size());
                     for (const auto& iter : command) {
                         std::string res;
                         redisClManager::execute(iter, res);
+                        results.emplace_back(res);
                     }
+                    nlohmann::json ret_js;
+                    ret_js["robotId"] = host_id;
+                    ret_js["msgId"] = msg_id;
+                    nlohmann::json array = nlohmann::json::array();
+                    for (auto& it : results) {
+                        array.push_back(it);
+                    }
+                    ret_js["errMsg"] = array;
+                    std::string ret_str = ret_js.dump();
+
+                    ((redisAsyncOpt *)privdata)->publish("CommandInfoRet", ret_str);
                 }
             }
             catch (std::exception& e) {

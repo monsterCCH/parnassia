@@ -13,7 +13,7 @@
 class redisAsyncOpt
 {
 public:
-    explicit redisAsyncOpt(std::string ip = "127.0.0.1", int port = 6379);
+    explicit redisAsyncOpt(std::string pass, std::string ip = "127.0.0.1", int port = 6379);
     ~redisAsyncOpt() = default;
 
     bool create();
@@ -30,6 +30,10 @@ private:
     // 连接回调
     static void connect_callback(const redisAsyncContext *redis_context,
                                  int status);
+
+    // 认证回调
+    static void auth_callback(redisAsyncContext *redis_context,
+                              void *reply, void *privdata);
 	
     // 断开连接的回调
     static void disconnect_callback(const redisAsyncContext *redis_context,
@@ -58,6 +62,7 @@ private:
 
     std::string _ip;
     int _port;
+    std::string _pass;
 };
 
 #endif

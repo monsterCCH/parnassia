@@ -45,13 +45,13 @@ public:
     string genDockerInfoJson();
     string genDockerImageJson();
     string genDockerContainerJson();
+    static std::string getDmiValue(const char* dmi_id);
 
 private:
     string getCpuUsage();
     void getMemInfo();
     string getIpAddress();
     string getCmdResult(const string& cmd);
-    std::string getDmiValue(const char* dmi_id);
     vector<string> ip_set;
     string sys_id;
     string os_type;

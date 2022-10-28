@@ -10,15 +10,17 @@
 class redisClManager
 {
     enum class TOPICS {
-        DOCKER_COMMAND = 0
+        COMMAND_INFO = 0
     };
     static std::map<int, std::string> TopicMap;
-    [[noreturn]] static void* redisCLsub(void * param);
+
 
 private:
     typedef struct {
         std::string hostIp;
+        std::string hostId;
         std::string topic;
+        redisClManager * selfPtr;
         std::shared_ptr<sw::redis::RedisCluster> instance;
     } SubParam;
     std::vector<std::shared_ptr<sw::redis::RedisCluster> > vec_rRedisCl;
@@ -27,6 +29,7 @@ private:
     std::vector<std::string> vec_topic;
     struct timeval tv;
     static std::string host_ip;
+    static std::string host_id;
 
 public:
     explicit redisClManager(const std::vector<CONFIG::redisCluster>& redis_info, struct timeval timeout = {1, 500000});
@@ -34,12 +37,14 @@ public:
     void redisPublish(const std::string& command, const std::string& json);
     static int execute(std::string cmd, std::string& output);
     static std::string getHostIp() { return host_ip; }
+    static std::string getHostId() { return host_id; }
 private:
     bool parseServer(const std::string& server, std::pair<std::string, int>& ip_port);
     void redisCLInit(const CONFIG::redisCluster& rc);
     void redisInit(const CONFIG::redisCluster& rc);
     void redisSubInit();
     void redisCLSubscriber();
+    [[noreturn]] static void* redisCLsub(void * param);
 };
 
 

@@ -5,15 +5,17 @@
 #include "get_adapters.h"
 #include "nlohmann/json.hpp"
 #include "timer.h"
+#include "host_info.h"
 using namespace std;
 
 #define IP_PORT_SEPARATOR ':'
 
 std::map<int, std::string> redisClManager::TopicMap = {
-    {static_cast<int>(TOPICS::DOCKER_COMMAND), "DockerInstructions"}
+    {static_cast<int>(TOPICS::COMMAND_INFO), "CommandInfo"}
 };
 
 string redisClManager::host_ip = {};
+string redisClManager::host_id = {};
 
 redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, struct timeval timeout) : tv(timeout)
 {
@@ -21,6 +23,7 @@ redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, s
     if (getDefAdapterInfo(adapter_info) == FUNC_RET_OK) {
         host_ip = NET::ipv4ToString(adapter_info.ipv4_address);
     }
+    host_id = hostInfo::getDmiValue("/sys/class/dmi/id/product_uuid");
     redisSubInit();
     for (const auto& iter : redis_info) {
         if (iter.type == 1) {
@@ -113,7 +116,7 @@ void redisClManager::redisInit(const CONFIG::redisCluster& rc)
         return ;
     }
     LOG->info("Connect to redis {}", rc.redis_server);
-    std::shared_ptr<redisAsyncOpt> rp = std::make_shared<redisAsyncOpt>(ip_port.first, ip_port.second);
+    std::shared_ptr<redisAsyncOpt> rp = std::make_shared<redisAsyncOpt>(rc.passwd, ip_port.first, ip_port.second);
     bool ret = rp->create();
     if (!ret) {
         LOG->warn("redis {}:{0:d} create failed", ip_port.first, ip_port.second);
@@ -121,7 +124,7 @@ void redisClManager::redisInit(const CONFIG::redisCluster& rc)
     }
     vec_redisAsyncPublish.emplace_back(rp);
 
-    rp = std::make_shared<redisAsyncOpt>(ip_port.first, ip_port.second);
+    rp = std::make_shared<redisAsyncOpt>(rc.passwd, ip_port.first, ip_port.second);
     ret = rp->create();;
     if (!ret) {
         LOG->warn("redis {}:{0:d} create failed", ip_port.first, ip_port.second);
@@ -179,6 +182,7 @@ void redisClManager::redisCLSubscriber()
             param->hostIp = host_ip;
             param->topic = it;
             param->instance = iter;
+            param->selfPtr = this;
             pthread_t t = ThreadCreate(redisCLsub, param);
             pthread_detach(t);
         }
@@ -194,17 +198,37 @@ void redisClManager::redisCLSubscriber()
                 try {
                     nlohmann::json js = nlohmann::json::parse(msg);
                     string host_id;
-                    auto obj = js.find("hostId");
+                    std::string msg_id;
+                    auto obj = js.find("robotId");
                     if (obj != js.end()) {
                         host_id = obj.value();
                     }
+                    obj = js.find("msgId");
+                    if (obj != js.end()) {
+                        msg_id = obj.value();
+                    }
 
-                    if (host_id == pa->hostIp) {
+                    if (host_id == pa->selfPtr->getHostId()) {
                         vector<string> command = js["command"];
+                        std::vector<std::string> results;
+                        results.reserve(command.size());
                         for (const auto& iter : command) {
                             string res;
                             execute(iter, res);
+                            results.emplace_back(res);
                         }
+
+                        nlohmann::json ret_js;
+                        ret_js["robotId"] = host_id;
+                        ret_js["msgId"] = msg_id;
+                        nlohmann::json array = nlohmann::json::array();
+                        for (auto& it : results) {
+                            array.push_back(it);
+                        }
+                        ret_js["errMsg"] = array;
+                        std::string ret_str = ret_js.dump();
+
+                        pa->selfPtr->redisPublish("CommandInfoRet", ret_str);
                     }
                 }
                 catch (exception& e) {

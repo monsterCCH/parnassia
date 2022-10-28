@@ -51,7 +51,7 @@ include(CMakeDependentOption)
 
 # 设置选项开关
 # google test
-option(GTEST "Build and run Gtest ..." ON)
+option(GTEST "Build and run Gtest ..." OFF)
 
 # 设置编译器选项
 set(COMPILER_FLAGS)
