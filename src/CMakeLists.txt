@@ -37,8 +37,8 @@ target_compile_options(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
         PRIVATE
         libhiredis.a
-        event
-        redis++
+        libevent.a
+        libredis++.a
         pthread
         #        -fsanitize=address
         )
