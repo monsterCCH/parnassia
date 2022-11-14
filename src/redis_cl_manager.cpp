@@ -6,18 +6,20 @@
 #include "nlohmann/json.hpp"
 #include "timer.h"
 #include "host_info.h"
+#include "scp_file.h"
 using namespace std;
 
 #define IP_PORT_SEPARATOR ':'
 
 std::map<int, std::string> redisClManager::TopicMap = {
-    {static_cast<int>(TOPICS::COMMAND_INFO), "CommandInfo"}
+    {static_cast<int>(TOPICS::COMMAND_INFO), "CommandInfo"},
+    {static_cast<int>(TOPICS::DELIVER_FILE), "DeliverFile"}
 };
 
 string redisClManager::host_ip = {};
 string redisClManager::host_id = {};
 
-redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, struct timeval timeout) : tv(timeout)
+redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, struct timeval timeout) : tv(timeout) , thread_pool(4)
 {
     NET::NetAdapterInfo adapter_info;
     if (getDefAdapterInfo(adapter_info) == FUNC_RET_OK) {
@@ -28,13 +30,13 @@ redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, s
     for (const auto& iter : redis_info) {
         if (iter.type == 1) {
             redisCLInit(iter);
-            redisCLSubscriber();
         }
 
         if (iter.type == 0) {
             redisInit(iter);
         }
     }
+    redisCLSubscriber();
 }
 
 redisClManager::~redisClManager()
@@ -188,6 +190,17 @@ void redisClManager::redisCLSubscriber()
         }
     }
 }
+
+int redisClManager::getTopicId(const std::string& topic)
+{
+    for (const auto& iter : TopicMap) {
+        if (iter.second == topic) {
+            return iter.first;
+        }
+    }
+    return -1;
+}
+
 [[noreturn]] void* redisClManager::redisCLsub(void* param)
 {
     for(;;) {
@@ -195,44 +208,16 @@ void redisClManager::redisCLSubscriber()
             auto* pa  = (SubParam*) param;
             auto  sub = pa->instance->subscriber();
             sub.on_message([&pa](const string& channel, const string& msg) {
-                try {
-                    nlohmann::json js = nlohmann::json::parse(msg);
-                    string host_id;
-                    std::string msg_id;
-                    auto obj = js.find("robotId");
-                    if (obj != js.end()) {
-                        host_id = obj.value();
-                    }
-                    obj = js.find("msgId");
-                    if (obj != js.end()) {
-                        msg_id = obj.value();
-                    }
-
-                    if (host_id == pa->selfPtr->getHostId()) {
-                        vector<string> command = js["command"];
-                        std::vector<std::string> results;
-                        results.reserve(command.size());
-                        for (const auto& iter : command) {
-                            string res;
-                            execute(iter, res);
-                            results.emplace_back(res);
-                        }
-
-                        nlohmann::json ret_js;
-                        ret_js["robotId"] = host_id;
-                        ret_js["msgId"] = msg_id;
-                        nlohmann::json array = nlohmann::json::array();
-                        for (auto& it : results) {
-                            array.push_back(it);
-                        }
-                        ret_js["errMsg"] = array;
-                        std::string ret_str = ret_js.dump();
-
-                        pa->selfPtr->redisPublish("CommandInfoRet", ret_str);
-                    }
-                }
-                catch (exception& e) {
-                    LOG->warn("Invalid json string {} : {}", msg, e.what());
+                int topic_id = getTopicId(pa->topic);
+                switch (topic_id) {
+                case static_cast<int>(TOPICS::COMMAND_INFO):
+                    exeCommand(pa, msg);
+                    break ;
+                case static_cast<int>(TOPICS::DELIVER_FILE):
+                    deliverFile(pa, msg);
+                    break;
+                default:
+                    break;
                 }
             });
 
@@ -246,6 +231,134 @@ void redisClManager::redisCLSubscriber()
         }
     }
 }
+
+void redisClManager::deliverFile(void* param, const std::string& msg)
+{
+    auto *pa = (SubParam*) param;
+    try {
+        nlohmann::json js = nlohmann::json::parse(msg);
+        string m_host_id;
+        std::string msg_id;
+        auto obj = js.find("robotId");
+        if (obj != js.end()) {
+            m_host_id = obj.value();
+        }
+        obj = js.find("msgId");
+        if (obj != js.end()) {
+            msg_id = obj.value();
+        }
+
+        if (m_host_id == redisClManager::getHostId()) {
+            int direction = js["direction"].get<int>();
+            nlohmann::json host_info_array = js["hostInfo"];
+            nlohmann::json file_info_array = js["params"];
+            std::vector<SCP::ScpFile::hostInfo> host_info_vec;
+            std::vector<fileInfo> file_info_vec;
+            SCP::ScpFile::hostInfo src_host, dst_host;
+
+            file_info_vec = file_info_array.get<vector<fileInfo>>();
+            host_info_vec = host_info_array.get<vector<SCP::ScpFile::hostInfo>>();
+
+
+            for (auto & iter : host_info_vec) {
+                if (iter.type == 0) src_host = iter;
+                if (iter.type == 1) dst_host = iter;
+            }
+
+            std::unique_ptr<SCP::ScpFile> scp;
+            if (direction == 1) {
+                scp = make_unique<SCP::ScpFile>(src_host);
+            } else if (direction == 2){
+                scp = make_unique<SCP::ScpFile>(src_host, dst_host);
+            }
+            if (scp == nullptr || !scp->getInitRet()) {
+                throw std::runtime_error("SCP init fail");
+            }
+            nlohmann::json ret_js;
+            ret_js["robotId"] = m_host_id;
+            ret_js["msgId"] = msg_id;
+            nlohmann::json result_array = nlohmann::json::array();
+//            std::vector<std::future<std::future<vector<int>>>> res;
+//            std::vector<std::future<vector<int>>> res;
+//            auto func = std::bind(&SCP::ScpFile::transFile, scp.get(), placeholders::_1, placeholders::_2, placeholders::_3);
+            for (const auto& iter : file_info_vec) {
+//                res.push_back(std::async(std::launch::async, func, iter.fileName, iter.srcFilePath, iter.dstFilePath));
+//                res.push_back(std::async(std::launch::async, pa->selfPtr->thread_pool.enqueue, func, iter.fileName, iter.srcFilePath, iter.dstFilePath)
+//                res.push_back(std::async(std::launch::async,[&](){ return pa->selfPtr->thread_pool.enqueue(func, iter.fileName, iter.srcFilePath, iter.dstFilePath); }));
+                    std::vector<int> ret = scp->transFile(iter.fileName, iter.srcFilePath, iter.dstFilePath);
+
+                    nlohmann::json js_obj = nlohmann::json::object();
+                    js_obj.push_back({"srcFilePath", iter.srcFilePath});
+                    nlohmann::json res_obj = nlohmann::json::object();
+                    vector<string> files = iter.fileName;
+                    auto first = files.begin();
+                    for (auto it = files.begin(); it != files.end(); ++it) {
+                        res_obj.push_back({*it, ret[distance(first, it)]});
+                        LOG->info("deliver {} result {0:d}", *it, ret[distance(first, it)]);
+                    }
+                    js_obj.push_back({"fileName", res_obj});
+                    result_array.push_back(js_obj);
+            }
+            ret_js["result"] = result_array;
+            std::string ret_str = ret_js.dump();
+
+            pa->selfPtr->redisPublish("DeliverFileRet", ret_str);
+        }
+
+    }
+    catch (std::runtime_error& e) {
+        LOG->warn("runtime_error {} : {}", msg, e.what());
+    }
+    catch (exception& e) {
+        LOG->warn("Invalid json string {} : {}", msg, e.what());
+    }
+
+}
+
+void redisClManager::exeCommand(void *param, const std::string& msg)
+{
+    auto* pa = (SubParam*) param;
+    try {
+        nlohmann::json js = nlohmann::json::parse(msg);
+        string m_host_id;
+        std::string msg_id;
+        auto obj = js.find("robotId");
+        if (obj != js.end()) {
+            m_host_id = obj.value();
+        }
+        obj = js.find("msgId");
+        if (obj != js.end()) {
+            msg_id = obj.value();
+        }
+
+        if (m_host_id == redisClManager::getHostId()) {
+            vector<string> command = js["command"];
+            std::vector<std::string> results;
+            results.reserve(command.size());
+            for (const auto& iter : command) {
+                string res;
+                execute(iter, res);
+                results.emplace_back(res);
+            }
+
+            nlohmann::json ret_js;
+            ret_js["robotId"] = m_host_id;
+            ret_js["msgId"] = msg_id;
+            nlohmann::json array = nlohmann::json::array();
+            for (auto& it : results) {
+                array.push_back(it);
+            }
+            ret_js["errMsg"] = array;
+            std::string ret_str = ret_js.dump();
+
+            pa->selfPtr->redisPublish("CommandInfoRet", ret_str);
+        }
+    }
+    catch (exception& e) {
+        LOG->warn("Invalid json string {} : {}", msg, e.what());
+    }
+}
+
 int redisClManager::execute(std::string cmd, string& output)
 {
     const int size = 128;

@@ -19,6 +19,8 @@ add_executable(${PROJECT_NAME}
         ${UTILS_SOURCES}
         )
 
+set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE 1)
+
 # 设置编译器属性
 target_compile_features(${PROJECT_NAME}
         PRIVATE
@@ -28,6 +30,7 @@ target_compile_features(${PROJECT_NAME}
 # 设置编译选项
 target_compile_options(${PROJECT_NAME}
         PRIVATE
+        "-gdwarf-4"
         #        "-fsanitize=address" "-fno-omit-frame-pointer"
         "$<$<CONFIG:Debug>:${CXX_FLAGS_DEBUG}>"
         "$<$<CONFIG:Release>:${CXX_FLAGS_RELEASE}>"
@@ -39,6 +42,10 @@ target_link_libraries(${PROJECT_NAME}
         libhiredis.a
         libevent.a
         libredis++.a
+        libssh2.a
+        libssl.a
+        libcrypto.a
         pthread
+        dl
         #        -fsanitize=address
         )

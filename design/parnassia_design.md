@@ -13,6 +13,7 @@
 * 查询docker相关信息 docker info
 * 查询容器相关信息
 * 查询镜像相关信息
+* 文件透传
 
 ### 功能设计要点
 
@@ -27,3 +28,4 @@
 * nlohmann json
 * hiredis-cluster
 * gtest
+* libssh2

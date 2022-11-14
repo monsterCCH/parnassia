@@ -6,10 +6,12 @@ project(parnassia_test)
 
 #设置项目头文件
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../utils)
 
 #设置项目源文件
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/tests TEST_FILES)
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/mocks MOCK_FILES)
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/../utils UTILS_SOURCES)
 set(MODULE_FILE
         )
 
@@ -23,6 +25,7 @@ enable_testing()
 add_executable(${PROJECT_NAME}
         ${TEST_FILES}
         ${MOCK_FILES}
+        ${UTILS_SOURCES}
         )
 
 #设置编译属性
@@ -31,6 +34,7 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_11)
 #设置编译选项
 target_compile_options(${PROJECT_NAME}
         PRIVATE
+        "-gdwarf-4"
         "$<$<CONFIG:Debug>:${CXX_FLAGS_DEBUG}>"
         "$<$<CONFIG:Release>:${CXX_FLAGS_RELEASE}>"
         )
@@ -38,9 +42,13 @@ target_compile_options(${PROJECT_NAME}
 #设置链接目标
 target_link_libraries(${PROJECT_NAME}
         PRIVATE
+        libssh2.a
+        ssl
+        crypto
         gtest
         gtest_main
         pthread
+        dl
         )
 
 #自动查找测试项目

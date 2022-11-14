@@ -1,18 +1,22 @@
 #ifndef PARNASSIA_TRINERVIS_REDIS_CL_MANAGER_H
 #define PARNASSIA_TRINERVIS_REDIS_CL_MANAGER_H
 #include <vector>
-//#include "hiredis_cluster/hircluster.h"
 #include "hiredis/hiredis.h"
 #include "config.h"
 #include "redis_async_opt.h"
 #include "redis++.h"
+#include "thread_pool.h"
 
 class redisClManager
 {
     enum class TOPICS {
-        COMMAND_INFO = 0
+        COMMAND_INFO = 0,
+        DELIVER_FILE = 1
     };
     static std::map<int, std::string> TopicMap;
+    static std::string host_ip;
+    static std::string host_id;
+    [[maybe_unused]] static std::mutex deliver_mutex;
 
 
 private:
@@ -28,8 +32,6 @@ private:
     std::vector<std::shared_ptr<redisAsyncOpt> > vec_redisAsyncSubscriber;
     std::vector<std::string> vec_topic;
     struct timeval tv;
-    static std::string host_ip;
-    static std::string host_id;
 
 public:
     explicit redisClManager(const std::vector<CONFIG::redisCluster>& redis_info, struct timeval timeout = {1, 500000});
@@ -38,13 +40,24 @@ public:
     static int execute(std::string cmd, std::string& output);
     static std::string getHostIp() { return host_ip; }
     static std::string getHostId() { return host_id; }
+    typedef struct fileInfo {
+        std::string srcFilePath;
+        std::string dstFilePath;
+        std::vector<std::string> fileName;
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(fileInfo, srcFilePath, dstFilePath, fileName)
+    }fileInfo;
+
+    [[maybe_unused]]ThreadPool thread_pool;
 private:
     bool parseServer(const std::string& server, std::pair<std::string, int>& ip_port);
     void redisCLInit(const CONFIG::redisCluster& rc);
     void redisInit(const CONFIG::redisCluster& rc);
     void redisSubInit();
     void redisCLSubscriber();
-    [[noreturn]] static void* redisCLsub(void * param);
+    static int getTopicId(const std::string& topic);
+    [[noreturn]] static void* redisCLsub(void *param);
+    static void exeCommand(void *param, const std::string& msg);
+    static void deliverFile(void *param, const std::string& msg);
 };
 
 

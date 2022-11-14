@@ -51,7 +51,7 @@ include(CMakeDependentOption)
 
 # 设置选项开关
 # google test
-option(GTEST "Build and run Gtest ..." OFF)
+option(GTEST "Build and run Gtest ..." ON)
 
 # 设置编译器选项
 set(COMPILER_FLAGS)
@@ -102,6 +102,8 @@ set(THIRD_PARTY_LIBS
         ${THIRD_PARTY_LIB_BASE}/nlohmann_json
         ${THIRD_PARTY_LIB_BASE}/spdlog
         ${THIRD_PARTY_LIB_BASE}/libevent
+        ${THIRD_PARTY_LIB_BASE}/libssh2
+        ${THIRD_PARTY_LIB_BASE}/openssl
         )
 set(THIRD_PARTY_LIBS_INC ${THIRD_PARTY_LIBS})
 set(THIRD_PARTY_LIBS_LINK ${THIRD_PARTY_LIBS})
