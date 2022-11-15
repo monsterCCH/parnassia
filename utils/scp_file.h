@@ -23,8 +23,8 @@ public:
         std::string passwd;
         int type;
         uint port = 22;
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(hostInfo, hostIp, user, passwd, type, port)
     }hostInfo;
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(hostInfo, hostIp, user, passwd, type, port)
 
 
 

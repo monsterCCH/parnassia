@@ -158,6 +158,7 @@ std::vector<int> ScpFile::transFile(const std::vector<std::string>& src_file, co
                 continue ;
             }
         }
+        LOG->info("start deliver {}", src_abs_file);
 
         while (got < fileinfo.st_size) {
             char mem[1024];
@@ -220,6 +221,7 @@ std::vector<int> ScpFile::transFile(const std::vector<std::string>& src_file, co
 
         libssh2_channel_free(channel_recv);
         channel_recv = nullptr;
+        LOG->info("end deliver {}", dst_abs_file);
     }
 
     return res;

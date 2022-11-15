@@ -266,10 +266,13 @@ void redisClManager::deliverFile(void* param, const std::string& msg)
             }
 
             std::unique_ptr<SCP::ScpFile> scp;
-            if (direction == 1) {
+            if (direction == 1 && !src_host.hostIp.empty() && src_host.hostIp != redisClManager::getHostIp()) {
                 scp = make_unique<SCP::ScpFile>(src_host);
-            } else if (direction == 2){
+            } else if (direction == 2 && !src_host.hostIp.empty() && !dst_host.hostIp.empty()
+                     && src_host.hostIp != redisClManager::getHostIp() && dst_host.hostIp != redisClManager::getHostIp()){
                 scp = make_unique<SCP::ScpFile>(src_host, dst_host);
+            } else {
+                LOG->warn("hostInfo or direction is invalid");
             }
             if (scp == nullptr || !scp->getInitRet()) {
                 throw std::runtime_error("SCP init fail");
@@ -294,7 +297,6 @@ void redisClManager::deliverFile(void* param, const std::string& msg)
                     auto first = files.begin();
                     for (auto it = files.begin(); it != files.end(); ++it) {
                         res_obj.push_back({*it, ret[distance(first, it)]});
-                        LOG->info("deliver {} result {0:d}", *it, ret[distance(first, it)]);
                     }
                     js_obj.push_back({"fileName", res_obj});
                     result_array.push_back(js_obj);
