@@ -16,7 +16,7 @@ class redisClManager
     static std::map<int, std::string> TopicMap;
     static std::string host_ip;
     static std::string host_id;
-    [[maybe_unused]] static std::mutex deliver_mutex;
+    static std::mutex deliver_mutex;
 
 
 private:

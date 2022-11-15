@@ -18,6 +18,7 @@ std::map<int, std::string> redisClManager::TopicMap = {
 
 string redisClManager::host_ip = {};
 string redisClManager::host_id = {};
+std::mutex redisClManager::deliver_mutex {};
 
 redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, struct timeval timeout) : tv(timeout) , thread_pool(4)
 {
@@ -234,6 +235,7 @@ int redisClManager::getTopicId(const std::string& topic)
 
 void redisClManager::deliverFile(void* param, const std::string& msg)
 {
+    std::lock_guard<std::mutex> lock(deliver_mutex);
     auto *pa = (SubParam*) param;
     try {
         nlohmann::json js = nlohmann::json::parse(msg);
