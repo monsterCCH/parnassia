@@ -283,13 +283,8 @@ void redisClManager::deliverFile(void* param, const std::string& msg)
             ret_js["robotId"] = m_host_id;
             ret_js["msgId"] = msg_id;
             nlohmann::json result_array = nlohmann::json::array();
-//            std::vector<std::future<std::future<vector<int>>>> res;
-//            std::vector<std::future<vector<int>>> res;
-//            auto func = std::bind(&SCP::ScpFile::transFile, scp.get(), placeholders::_1, placeholders::_2, placeholders::_3);
+
             for (const auto& iter : file_info_vec) {
-//                res.push_back(std::async(std::launch::async, func, iter.fileName, iter.srcFilePath, iter.dstFilePath));
-//                res.push_back(std::async(std::launch::async, pa->selfPtr->thread_pool.enqueue, func, iter.fileName, iter.srcFilePath, iter.dstFilePath)
-//                res.push_back(std::async(std::launch::async,[&](){ return pa->selfPtr->thread_pool.enqueue(func, iter.fileName, iter.srcFilePath, iter.dstFilePath); }));
                     std::vector<int> ret = scp->transFile(iter.fileName, iter.srcFilePath, iter.dstFilePath);
 
                     nlohmann::json js_obj = nlohmann::json::object();
@@ -326,6 +321,7 @@ void redisClManager::exeCommand(void *param, const std::string& msg)
         nlohmann::json js = nlohmann::json::parse(msg);
         string m_host_id;
         std::string msg_id;
+        int type  = 0;
         auto obj = js.find("robotId");
         if (obj != js.end()) {
             m_host_id = obj.value();
@@ -334,15 +330,38 @@ void redisClManager::exeCommand(void *param, const std::string& msg)
         if (obj != js.end()) {
             msg_id = obj.value();
         }
+        obj = js.find("type");
+        if (obj != js.end()) {
+            type = obj.value();
+        }
 
         if (m_host_id == redisClManager::getHostId()) {
             vector<string> command = js["command"];
             std::vector<std::string> results;
+            std::unique_ptr<SCP::ScpFile> scp;
+            if (type) {
+                nlohmann::json host_info_obj = js["hostInfo"];
+                sshInfo hi = host_info_obj.get<sshInfo>();
+                SCP::ScpFile::hostInfo dst_host {.hostIp=hi.hostIp, .user=hi.user, .passwd=hi.passwd, .type=1, .port=hi.port};
+                if (!dst_host.hostIp.empty() && dst_host.hostIp != redisClManager::getHostIp()) {
+                    scp = make_unique<SCP::ScpFile>(dst_host);
+                }
+                if (scp == nullptr || !scp->getInitRet()) {
+                    throw std::runtime_error("SCP init fail");
+                }
+            }
+
             results.reserve(command.size());
             for (const auto& iter : command) {
-                string res;
-                execute(iter, res);
-                results.emplace_back(res);
+                if (!type) { // local execute
+                    string res;
+                    execute(iter, res);
+                    results.emplace_back(res);
+                }else { // remote execute
+                    string res;
+                    scp->execute(scp->getSrcHostInfo(), iter, res);
+                    results.emplace_back(res);
+                }
             }
 
             nlohmann::json ret_js;
@@ -357,6 +376,9 @@ void redisClManager::exeCommand(void *param, const std::string& msg)
 
             pa->selfPtr->redisPublish("CommandInfoRet", ret_str);
         }
+    }
+    catch (std::runtime_error& e) {
+        LOG->warn("runtime_error {} : {}", msg, e.what());
     }
     catch (exception& e) {
         LOG->warn("Invalid json string {} : {}", msg, e.what());

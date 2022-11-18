@@ -136,6 +136,25 @@ string hostInfo::genDockerContainerJson()
     }
     return {};
 }
+
+string hostInfo::genDockerContainerStatsJson()
+{
+    // 不要调整格式，换行是为了输入\n
+    string res = getCmdResult(R"(echo "[$(IFS=$'
+'; for line in $(docker container stats --no-stream --no-trunc --format="{{json .}}"); do echo -n "${line},"; done;)]")");
+    res = res.substr(0, res.find_last_of(',')) + "]";
+    try {
+        nlohmann::json::array_t array = nlohmann::json::parse(res);
+        nlohmann::json js;
+        js["docker_container_stats"] = array;
+        js[InfoItemMap[II_SYS_ID]] = sys_id;
+        return js.dump();
+    } catch (exception& e) {
+        LOG->debug("docker container json parser error : {}", e.what());
+    }
+    return {};
+}
+
 string hostInfo::getCmdResult(const string& cmd)
 {
     stringstream ss;

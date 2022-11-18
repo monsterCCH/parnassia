@@ -13,11 +13,19 @@ class redisClManager
         COMMAND_INFO = 0,
         DELIVER_FILE = 1
     };
+
+    typedef struct sshInfo{
+        std::string hostIp;
+        std::string user;
+        std::string passwd;
+        uint port = 22;
+    }sshInfo;
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(sshInfo, hostIp, user, passwd, port)
+
     static std::map<int, std::string> TopicMap;
     static std::string host_ip;
     static std::string host_id;
     static std::mutex deliver_mutex;
-
 
 private:
     typedef struct {

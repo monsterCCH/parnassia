@@ -14,7 +14,7 @@ Wants=network-online.target
 
 Type=notify
 
-ExecStart=/usr/bin/dockerd
+ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2375 -H unix:///var/run/docker.sock
 
 ExecReload=/bin/kill -s HUP $MAINPID
 

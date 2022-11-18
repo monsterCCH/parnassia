@@ -45,6 +45,7 @@ public:
     string genDockerInfoJson();
     string genDockerImageJson();
     string genDockerContainerJson();
+    string genDockerContainerStatsJson();
     static std::string getDmiValue(const char* dmi_id);
 
 private:

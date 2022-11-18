@@ -111,7 +111,8 @@ std::vector<int> ScpFile::transFile(const std::vector<std::string>& src_file, co
 
     // create remote path dir
     std::string command = "mkdir -p " + dst_path;
-    if (!getIsLocal() && FUNC_RET_OK != execute(&m_di, command)) {
+    std::string result;
+    if (!getIsLocal() && FUNC_RET_OK != execute(&m_di, command, result)) {
         LOG->warn("remote dir {} create fail", dst_path);
         return res;
     }
@@ -227,7 +228,8 @@ std::vector<int> ScpFile::transFile(const std::vector<std::string>& src_file, co
     return res;
 }
 
-FUNCTION_RETURN ScpFile::execute(sshInfo* ssh_info, const std::string& command)
+FUNCTION_RETURN ScpFile::execute(sshInfo* ssh_info, const std::string& command,
+                                 std::string& result)
 {
     LIBSSH2_CHANNEL *channel;
     int rc;
@@ -251,6 +253,34 @@ FUNCTION_RETURN ScpFile::execute(sshInfo* ssh_info, const std::string& command)
         LOG->warn("ssh execute fail");
         return FUNC_RET_ERROR;
     }
+    std::stringstream ss;
+    for(;;) {
+        /* loop until we block */
+        int rc;
+        do {
+            char buffer[0x4000];
+            rc = libssh2_channel_read(channel, buffer, sizeof(buffer) );
+            if(rc > 0) {
+                int i;
+                for(i = 0; i < rc; ++i)
+                    ss << buffer[i];
+            }
+            else {
+                if(rc != LIBSSH2_ERROR_EAGAIN)
+                    LOG->info("ScpFile::execute: libssh2_channel_read returned {0:d}", rc);
+            }
+        }
+        while(rc > 0);
+
+        /* this is due to blocking that would occur otherwise so we loop on
+           this condition */
+        if(rc == LIBSSH2_ERROR_EAGAIN) {
+            waitSocket(ssh_info->sock, ssh_info->session);
+        }
+        else
+            break;
+    }
+    result = ss.str();
 
     while((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
         waitSocket(ssh_info->sock, ssh_info->session);

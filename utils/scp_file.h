@@ -6,6 +6,7 @@
 #include "nlohmann/json.hpp"
 #include "base.h"
 
+
 BEGIN_NAMESPACE(SCP)
 #define SUCCESS 1
 #define FAIL    0
@@ -31,9 +32,11 @@ public:
     ScpFile(const hostInfo& src, const hostInfo& dst);
     explicit ScpFile(const hostInfo& src);
     std::vector<int> transFile(const std::vector<std::string>& src_file, const std::string& src_path, const std::string& dst_path);
-
+    FUNCTION_RETURN    execute(sshInfo* ssh_info, const std::string& command,
+                               std::string& result);
     [[nodiscard]] bool getInitRet() const { return m_init_ok; }
     [[nodiscard]] bool getIsLocal() const { return m_is_local; }
+    sshInfo* getSrcHostInfo() { return &m_si; }
 
     ~ScpFile();
 private:
@@ -47,7 +50,6 @@ private:
     std::string m_dst_path;
 
     FUNCTION_RETURN init(const hostInfo& src, sshInfo *ssh_info);
-    FUNCTION_RETURN execute(sshInfo *ssh_info, const std::string& command);
     void release(sshInfo *ssh_info);
     int waitSocket(int socket_fd, LIBSSH2_SESSION *session);
 };
