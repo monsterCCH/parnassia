@@ -55,6 +55,19 @@ restart(){
   start
 }
 
+#安装
+install(){
+  sudo chmod +x parnassia
+  sudo mkdir -p /usr/local/lib
+  sudo cp -r libstdc++.so.6 /usr/local/lib
+  sudo cp -r parnassia /usr/bin/
+  sudo cp -r parnassia.service /etc/systemd/system/
+  sudo chmod +x /etc/systemd/system/parnassia.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable parnassia.service
+  sudo systemctl start parnassia
+}
+
 #复制配置文件到指定路径
 cp -f cfg/parnassia.cfg /etc
 
@@ -71,6 +84,9 @@ case "$1" in
     ;;
   "restart")
     restart
+    ;;
+  "install")
+    install
     ;;
   *)
     usage

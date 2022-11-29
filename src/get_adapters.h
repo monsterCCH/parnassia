@@ -25,6 +25,8 @@ std::string getDefInterface();
 
 std::string ipv4ToString(unsigned char ipv4[]);
 
+std::string macToString(unsigned char mac_address[]);
+
 END_NAMESPACE
 
 #endif   // PARNASSIA_TRINERVIS_GET_ADAPTERS_H

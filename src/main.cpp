@@ -21,6 +21,7 @@ void RedisPublishDockerInfo(void *pParam);
 void RedisPublishDockerImage(void *pParam);
 void RedisPublishDockerContainer(void *pParam);
 void RedisPublishDockerContainerStates(void *pParam);
+void RedisPublishKvmInfo(void *pParam);
 
 const std::string PROC_NAME = "parnassia";
 static std::string pid_file = "/var/run/" + PROC_NAME + ".pid";
@@ -164,14 +165,9 @@ int main(int argc, char* argv[])
     CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerImage, &param, 0, 30 * 1000);
     CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerContainer, &param, 0, 30 * 1000);
     CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerContainerStates, &param, 0, 30 * 1000);
+//    CreateTimer(g_ptr_tmr_mgr, &RedisPublishKvmInfo, &param, 0, 30 * 1000);
     pthread_join(g_ptr_tmr_mgr->thread, nullptr);
-//    while (g_program_run) {
-//        hi.flush();
-//        string res = hi.genHwInfoJson();
-//        redis_ptr->redisPublish("hw_info", res);
-//        sleep(30);
-//        LOG->info("heart");
-//    }
+
     return 0;
 }
 
@@ -274,4 +270,16 @@ void RedisPublishDockerContainerStates(void *pParam)
     }
     ptr->rcm_ptr->redisPublish("docker_container_stats", res);
     LOG->debug("publish docker_container_stats {}", res);
+}
+
+void RedisPublishKvmInfo(void *pParam)
+{
+    RedisPublishParam* ptr = (RedisPublishParam *)pParam;
+    string res = ptr->hi_ptr->genKvmInfoJson();
+    if (res.empty()) {
+        LOG->debug("KVM infos empty");
+        return;
+    }
+    ptr->rcm_ptr->redisPublish("kvm_info", res);
+    LOG->debug("publish kvm_info {}", res);
 }

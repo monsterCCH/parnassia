@@ -135,4 +135,18 @@ std::string ipv4ToString(unsigned char ipv4[])
        << static_cast<unsigned int>(ipv4[3]) ;
     return ss.str();
 }
+
+std::string macToString(unsigned char mac_address[])
+{
+    char str[19];
+    sprintf(str,
+            "%02X:%02X:%02X:%02X:%02X:%02X",
+            mac_address[0],
+            mac_address[1],
+            mac_address[2],
+            mac_address[3],
+            mac_address[4],
+            mac_address[5]);
+    return str;
+}
 END_NAMESPACE

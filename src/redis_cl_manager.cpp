@@ -22,11 +22,8 @@ std::mutex redisClManager::deliver_mutex {};
 
 redisClManager::redisClManager(const vector<CONFIG::redisCluster>& redis_info, struct timeval timeout) : tv(timeout) , thread_pool(4)
 {
-    NET::NetAdapterInfo adapter_info;
-    if (getDefAdapterInfo(adapter_info) == FUNC_RET_OK) {
-        host_ip = NET::ipv4ToString(adapter_info.ipv4_address);
-    }
-    host_id = hostInfo::getDmiValue("/sys/class/dmi/id/product_uuid");
+    host_ip = m_hi.getIpAddr();
+    host_id = m_hi.getSysId();
     redisSubInit();
     for (const auto& iter : redis_info) {
         if (iter.type == 1) {

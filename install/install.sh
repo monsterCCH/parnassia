@@ -15,27 +15,35 @@ docker_install() {
   sudo systemctl start docker
 }
 
+kvm_install() {
+   if command_exists yum; then
+       sudo tar -zxvf repository.tar.gz -C /root >/dev/null 2>&1
+       sudo cp local-custom.repo /etc/yum.repos.d/
+       sudo yum -y --disablerepo=\* --enablerepo=local-custom install qemu-kvm python-virtinst libvirt libvirt-python virt-manager libguestfs-tools bridge-utils virt-install >/dev/null 2>&1
+   fi
+}
+
 do_install() {
   if command_exists docker; then
-    cat >&2 <<-'EOF'
-			Warning: the "docker" command appears to already exist on this system
-			abort this script
-		EOF
-    exit 1
-  fi
-
-  docker_install
-
-  if command_exists docker; then
+	echo "Warning: the 'docker' command appears to already exist on this system"
+  else
+    docker_install
     (
       set +x
-      docker load -i centos7.tar >/dev/null 2>&1
+      docker load -i centos_7_bigtree.tar >/dev/null 2>&1
     )
-    cat >&2 <<-'EOF'
-			docker install success
-		EOF
-    exit 0
+    echo "docker install success"
   fi
+
+if command_exists virt-install; then
+    echo "Warning: the 'kvm' command appears to already exist on this system"
+else
+  kvm_install
+  systemctl start libvirtd
+  systemctl enable libvirtd
+  echo "kvm install success"
+fi
+
 
 }
 

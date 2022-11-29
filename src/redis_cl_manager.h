@@ -6,6 +6,7 @@
 #include "redis_async_opt.h"
 #include "redis++.h"
 #include "thread_pool.h"
+#include "host_info.h"
 
 class redisClManager
 {
@@ -40,6 +41,7 @@ private:
     std::vector<std::shared_ptr<redisAsyncOpt> > vec_redisAsyncSubscriber;
     std::vector<std::string> vec_topic;
     struct timeval tv;
+    const hostInfo m_hi;
 
 public:
     explicit redisClManager(const std::vector<CONFIG::redisCluster>& redis_info, struct timeval timeout = {1, 500000});
