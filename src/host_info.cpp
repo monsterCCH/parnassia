@@ -142,25 +142,26 @@ bool hostInfo::isDocker()
     ssize_t read;
 
     fp = fopen("/proc/self/cgroup", "r");
-    if (fp == nullptr) {
-        return false;
+    if (!fp) {
+        while ((read = getline(&line, &len, fp)) != -1
+               && result == CONTAINER_TYPE::NONE) {
+            if (strstr(line, "docker") != nullptr) {
+                result = CONTAINER_TYPE::DOCKER;
+            }
+        }
+        if (line) {
+            free(line);
+        }
+        fclose(fp);
     }
 
-    while ((read = getline(&line, &len, fp)) != -1
-           && result == CONTAINER_TYPE::NONE) {
-        if (strstr(line, "docker") != nullptr) {
-            result = CONTAINER_TYPE::DOCKER;
-        }
-    }
-    if (line) {
-        free(line);
-    }
-    fclose(fp);
     if (result == CONTAINER_TYPE::NONE) {
         ifstream dockerEnv("/.dockerenv");
         if (dockerEnv.good()) {
             return true;
         }
+    }else {
+        return true;
     }
     return false;
 }
