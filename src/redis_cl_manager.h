@@ -1,6 +1,8 @@
 #ifndef PARNASSIA_TRINERVIS_REDIS_CL_MANAGER_H
 #define PARNASSIA_TRINERVIS_REDIS_CL_MANAGER_H
 #include <vector>
+#include <workflow/Workflow.h>
+#include <workflow/HttpMessage.h>
 #include "hiredis/hiredis.h"
 #include "config.h"
 #include "redis_async_opt.h"
@@ -10,9 +12,33 @@
 
 class redisClManager
 {
+    typedef struct {
+        std::string hostIp;
+        std::string hostId;
+        std::string topic;
+        redisClManager * selfPtr;
+        std::shared_ptr<sw::redis::RedisCluster> instance;
+    } SubParam;
+
     enum class TOPICS {
         COMMAND_INFO = 0,
         DELIVER_FILE = 1
+    };
+
+    enum DELIVER_TYPE {
+        DELIVER_SSH = 1,
+        DELIVER_HTTP = 2
+    };
+
+    struct httpSeriesContext {
+        std::string url;
+        std::string path;
+        std::string file_name;
+        std::string msg_id;
+        SubParam* pa;
+        int state;
+        int error;
+        protocol::HttpResponse resp;
     };
 
     typedef struct sshInfo{
@@ -29,13 +55,6 @@ class redisClManager
     static std::mutex deliver_mutex;
 
 private:
-    typedef struct {
-        std::string hostIp;
-        std::string hostId;
-        std::string topic;
-        redisClManager * selfPtr;
-        std::shared_ptr<sw::redis::RedisCluster> instance;
-    } SubParam;
     std::vector<std::shared_ptr<sw::redis::RedisCluster> > vec_rRedisCl;
     std::vector<std::shared_ptr<redisAsyncOpt> > vec_redisAsyncPublish;
     std::vector<std::shared_ptr<redisAsyncOpt> > vec_redisAsyncSubscriber;
@@ -68,6 +87,9 @@ private:
     [[noreturn]] static void* redisCLsub(void *param);
     static void exeCommand(void *param, const std::string& msg);
     static void deliverFile(void *param, const std::string& msg);
+    static void sshDeliver(nlohmann::json& js, SubParam* pa);
+    static void httpDeliver(nlohmann::json& js, SubParam* pa);
+    static void httpCallback(const ParallelWork *pwork);
 };
 
 

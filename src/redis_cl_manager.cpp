@@ -2,11 +2,16 @@
 #include "logger.h"
 #include "utils_string.h"
 #include <hiredis/hiredis.h>
+#include "workflow/HttpMessage.h"
+#include "workflow/HttpUtil.h"
+#include "workflow/WFTaskFactory.h"
+#include "workflow/WFFacilities.h"
 #include "get_adapters.h"
 #include "nlohmann/json.hpp"
 #include "timer.h"
 #include "host_info.h"
 #include "scp_file.h"
+
 using namespace std;
 
 #define IP_PORT_SEPARATOR ':'
@@ -238,6 +243,7 @@ void redisClManager::deliverFile(void* param, const std::string& msg)
         nlohmann::json js = nlohmann::json::parse(msg);
         string m_host_id;
         std::string msg_id;
+        int deliver_type = 0;
         auto obj = js.find("robotId");
         if (obj != js.end()) {
             m_host_id = obj.value();
@@ -246,59 +252,23 @@ void redisClManager::deliverFile(void* param, const std::string& msg)
         if (obj != js.end()) {
             msg_id = obj.value();
         }
+        obj = js.find("deliverType");
+        if (obj != js.end()) {
+            deliver_type = obj.value();
+        }
 
         if (m_host_id == redisClManager::getHostId()) {
-            int direction = js["direction"].get<int>();
-            nlohmann::json host_info_array = js["hostInfo"];
-            nlohmann::json file_info_array = js["params"];
-            std::vector<SCP::ScpFile::hostInfo> host_info_vec;
-            std::vector<fileInfo> file_info_vec;
-            SCP::ScpFile::hostInfo src_host, dst_host;
-
-            file_info_vec = file_info_array.get<vector<fileInfo>>();
-            host_info_vec = host_info_array.get<vector<SCP::ScpFile::hostInfo>>();
-
-
-            for (auto & iter : host_info_vec) {
-                if (iter.type == 0) src_host = iter;
-                if (iter.type == 1) dst_host = iter;
+            switch (deliver_type) {
+            case DELIVER_SSH:
+                sshDeliver(js, pa);
+                break;
+            case DELIVER_HTTP:
+                httpDeliver(js, pa);
+                break;
+            default:
+                LOG->warn("Deliver type not support {0:d}", deliver_type);
+                break;
             }
-
-            std::unique_ptr<SCP::ScpFile> scp;
-            if (direction == 1 && !src_host.hostIp.empty() && src_host.hostIp != redisClManager::getHostIp()) {
-                scp = make_unique<SCP::ScpFile>(src_host);
-            } else if (direction == 2 && !src_host.hostIp.empty() && !dst_host.hostIp.empty()
-                     && src_host.hostIp != redisClManager::getHostIp() && dst_host.hostIp != redisClManager::getHostIp()){
-                scp = make_unique<SCP::ScpFile>(src_host, dst_host);
-            } else {
-                LOG->warn("hostInfo or direction is invalid");
-            }
-            if (scp == nullptr || !scp->getInitRet()) {
-                throw std::runtime_error("SCP init fail");
-            }
-            nlohmann::json ret_js;
-            ret_js["robotId"] = m_host_id;
-            ret_js["msgId"] = msg_id;
-            nlohmann::json result_array = nlohmann::json::array();
-
-            for (const auto& iter : file_info_vec) {
-                    std::vector<int> ret = scp->transFile(iter.fileName, iter.srcFilePath, iter.dstFilePath);
-
-                    nlohmann::json js_obj = nlohmann::json::object();
-                    js_obj.push_back({"srcFilePath", iter.srcFilePath});
-                    nlohmann::json res_obj = nlohmann::json::object();
-                    vector<string> files = iter.fileName;
-                    auto first = files.begin();
-                    for (auto it = files.begin(); it != files.end(); ++it) {
-                        res_obj.push_back({*it, ret[distance(first, it)]});
-                    }
-                    js_obj.push_back({"fileName", res_obj});
-                    result_array.push_back(js_obj);
-            }
-            ret_js["result"] = result_array;
-            std::string ret_str = ret_js.dump();
-
-            pa->selfPtr->redisPublish("DeliverFileRet", ret_str);
         }
 
     }
@@ -307,6 +277,210 @@ void redisClManager::deliverFile(void* param, const std::string& msg)
     }
     catch (exception& e) {
         LOG->warn("Invalid json string {} : {}", msg, e.what());
+    }
+
+}
+
+void redisClManager::httpCallback(const ParallelWork *pwork)
+{
+    httpSeriesContext *ctx;
+    const void *body;
+    size_t size;
+    size_t i;
+    string msg_id;
+    SubParam* pa;
+
+    nlohmann::json ret_js;
+    ret_js["robotId"] = redisClManager::getHostId();
+
+    nlohmann::json result_array = nlohmann::json::array();
+
+
+    for (i = 0; i < pwork->size(); i++)
+    {
+        ctx = (httpSeriesContext *)pwork->series_at(i)->get_context();
+        msg_id = ctx->msg_id;
+        pa = ctx->pa;
+        std::string cmd = "mkdir -p " + ctx->path;
+        system(cmd.c_str());
+        std::string file = ctx->path + "/" + ctx->file_name;
+
+        if (ctx->state == WFT_STATE_SUCCESS)
+        {
+            ctx->resp.get_parsed_body(&body, &size);
+            nlohmann::json js_obj = nlohmann::json::object();
+            js_obj.push_back({"srcFilePath", ctx->url});
+            nlohmann::json res_obj = nlohmann::json::object();
+
+            FILE* fp = fopen(file.c_str(), "w+");
+            if (!fp) {
+                LOG->warn("file open fail: {}", file);
+                res_obj.push_back({ctx->file_name, FAIL});
+                js_obj.push_back({"fileName", res_obj});
+                result_array.push_back(js_obj);
+                continue;
+            }
+            fwrite(body, 1, size, fp);
+            fclose(fp);
+            LOG->info("get {} to {}", ctx->url, file);
+
+            res_obj.push_back({ctx->file_name, SUCCESS});
+            js_obj.push_back({"fileName", res_obj});
+            result_array.push_back(js_obj);
+        }
+        else {
+            LOG->warn("ERROR! state = {0:d}, error = {0:d}", ctx->state, ctx->error);
+        }
+
+        delete ctx;
+    }
+    ret_js["msgId"] = msg_id;
+    ret_js["result"] = result_array;
+    std::string ret_str = ret_js.dump();
+
+    pa->selfPtr->redisPublish("DeliverFileRet", ret_str);
+}
+
+void redisClManager::httpDeliver(nlohmann::json& js, redisClManager::SubParam* pa)
+{
+    try {
+        std::string msg_id;
+        auto obj = js.find("msgId");
+        if (obj != js.end()) {
+            msg_id = obj.value();
+        }
+        nlohmann::json file_info_array = js["params"];
+        std::vector<fileInfo> file_info_vec;
+        file_info_vec = file_info_array.get<vector<fileInfo>>();
+
+        ParallelWork *pwork = Workflow::create_parallel_work(httpCallback);
+        SeriesWork *series;
+        WFHttpTask *task;
+        protocol::HttpRequest *req;
+        httpSeriesContext *ctx;
+        for (const auto& it : file_info_vec) {
+            std::string url(it.srcFilePath);
+            if (strncasecmp(url.c_str(), "http://", 7) != 0 &&
+                strncasecmp(url.c_str(), "https://", 8) != 0)
+            {
+                url = "http://" +url;
+            }
+
+            task = WFTaskFactory::create_http_task(url, 5, 2,
+                                                   [](WFHttpTask *task)
+                                                   {
+                                                       httpSeriesContext *ctx =
+                                                           (httpSeriesContext *)series_of(task)->get_context();
+                                                       ctx->state = task->get_state();
+                                                       ctx->error = task->get_error();
+                                                       ctx->resp = std::move(*task->get_resp());
+                                                   });
+            task->set_receive_timeout(600 * 1000);
+
+            req = task->get_req();
+            req->add_header_pair("Accept", "*/*");
+            req->add_header_pair("User-Agent", "Wget/1.14 (linux-gnu)");
+            req->add_header_pair("Connection", "close");
+
+            ctx = new httpSeriesContext;
+            ctx->url = std::move(url);
+            ctx->path = it.dstFilePath;
+            ctx->file_name = it.fileName[0];
+            ctx->msg_id = msg_id;
+            ctx->pa = pa;
+            series = Workflow::create_series_work(task, nullptr);
+            series->set_context(ctx);
+            pwork->add_series(series);
+        }
+
+        WFFacilities::WaitGroup wait_group(1);
+        Workflow::start_series_work(pwork, [&wait_group](const SeriesWork *) {
+            wait_group.done();
+        });
+
+        wait_group.wait();
+
+
+    }
+    catch (std::runtime_error& e) {
+        LOG->warn("runtime_error {}", e.what());
+    }
+    catch (exception& e) {
+        LOG->warn("Invalid json string {} ", e.what());
+    }
+}
+
+void redisClManager::sshDeliver(nlohmann::json& js, SubParam* pa)
+{
+    try{
+        int type  = 0;
+        std::string msg_id;
+        auto obj = js.find("type");
+        if (obj != js.end()) {
+            type = obj.value();
+        }
+        obj = js.find("msgId");
+        if (obj != js.end()) {
+            msg_id = obj.value();
+        }
+        int direction = js["direction"].get<int>();
+        nlohmann::json host_info_array = js["hostInfo"];
+        nlohmann::json file_info_array = js["params"];
+        std::vector<SCP::ScpFile::hostInfo> host_info_vec;
+        std::vector<fileInfo> file_info_vec;
+        SCP::ScpFile::hostInfo src_host, dst_host;
+
+        file_info_vec = file_info_array.get<vector<fileInfo>>();
+        host_info_vec = host_info_array.get<vector<SCP::ScpFile::hostInfo>>();
+
+
+        for (auto & iter : host_info_vec) {
+            if (iter.type == 0) src_host = iter;
+            if (iter.type == 1) dst_host = iter;
+        }
+
+        std::unique_ptr<SCP::ScpFile> scp;
+        if (direction == 1 && !src_host.hostIp.empty() && src_host.hostIp != redisClManager::getHostIp()) {
+            scp = make_unique<SCP::ScpFile>(src_host);
+        } else if (direction == 2 && !src_host.hostIp.empty() && !dst_host.hostIp.empty()
+                 && src_host.hostIp != redisClManager::getHostIp() && dst_host.hostIp != redisClManager::getHostIp()){
+            scp = make_unique<SCP::ScpFile>(src_host, dst_host);
+        } else {
+            LOG->warn("hostInfo or direction is invalid");
+        }
+        if (scp == nullptr || !scp->getInitRet()) {
+            throw std::runtime_error("SCP init fail");
+        }
+        nlohmann::json ret_js;
+        ret_js["robotId"] = redisClManager::getHostId();
+        ret_js["msgId"] = msg_id;
+        nlohmann::json result_array = nlohmann::json::array();
+
+        for (const auto& iter : file_info_vec) {
+            std::vector<int> ret = scp->transFile(iter.fileName, iter.srcFilePath, iter.dstFilePath);
+
+            nlohmann::json js_obj = nlohmann::json::object();
+            js_obj.push_back({"srcFilePath", iter.srcFilePath});
+            nlohmann::json res_obj = nlohmann::json::object();
+            vector<string> files = iter.fileName;
+            auto first = files.begin();
+            for (auto it = files.begin(); it != files.end(); ++it) {
+                res_obj.push_back({*it, ret[distance(first, it)]});
+            }
+            js_obj.push_back({"fileName", res_obj});
+            result_array.push_back(js_obj);
+        }
+        ret_js["result"] = result_array;
+        std::string ret_str = ret_js.dump();
+
+        pa->selfPtr->redisPublish("DeliverFileRet", ret_str);
+
+    }
+    catch (std::runtime_error& e) {
+        LOG->warn("runtime_error {}", e.what());
+    }
+    catch (exception& e) {
+        LOG->warn("Invalid json string {} ", e.what());
     }
 
 }

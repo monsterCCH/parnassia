@@ -1,0 +1,25 @@
+[Unit]
+
+Description=sdn probe service
+
+After=network-online.target
+
+Wants=network-online.target
+
+
+
+[Service]
+
+Environment="LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH"
+
+Type=forking
+
+ExecStart=/usr/bin/parnassia -r start
+
+ExecStop=/usr/bin/parnassia -r stop
+
+User=root
+
+[Install]
+
+WantedBy=multi-user.target

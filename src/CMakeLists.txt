@@ -43,6 +43,7 @@ target_link_libraries(${PROJECT_NAME}
         libevent.a
         libredis++.a
         libssh2.a
+        libworkflow.a
         libssl.a
         libcrypto.a
         pthread
