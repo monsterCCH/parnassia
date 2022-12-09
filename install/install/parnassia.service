@@ -6,13 +6,17 @@ After=network-online.target
 
 Wants=network-online.target
 
-
+StartLimitIntervalSec=0
 
 [Service]
 
 Environment="LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH"
 
 Type=forking
+
+Restart=always
+
+RestartSec=1
 
 ExecStart=/usr/bin/parnassia -r start
 
