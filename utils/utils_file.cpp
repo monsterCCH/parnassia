@@ -1,4 +1,6 @@
 #include "utils_file.h"
+#include <csignal>
+#include <unistd.h>
 
 using namespace std;
 
@@ -29,4 +31,27 @@ bool dir_exists(const std::string& dir) {
 bool file_exists(const std::string& file) {
     struct stat info;
     return (stat (file.c_str(), &info) == 0);
+}
+
+bool create_dir(const char *dir) {
+    char DirName[256];
+    strcpy(DirName, dir);
+    int i, len = strlen(DirName);
+    if (DirName[len - 1] != '/') strcat(DirName, "/");
+
+    len = strlen(DirName);
+
+    for (i = 1; i < len; i++) {
+        if (DirName[i] == '/') {
+            DirName[i] = 0;
+            if (access(DirName, NULL) != 0) {
+                if (mkdir(DirName, 0755) == -1) {
+                    return false;
+                }
+            }
+            DirName[i] = '/';
+        }
+    }
+
+    return true;
 }

@@ -1,8 +1,10 @@
 #ifndef PARNASSIA_TRINERVIS_SCP_FILE_H
 #define PARNASSIA_TRINERVIS_SCP_FILE_H
 #include <string>
+#include <utility>
 #include <vector>
 #include <libssh2.h>
+#include "libssh2_sftp.h"
 #include "nlohmann/json.hpp"
 #include "base.h"
 
@@ -10,6 +12,8 @@
 BEGIN_NAMESPACE(SCP)
 #define SUCCESS 1
 #define FAIL    0
+
+
 
 class ScpFile
 {
@@ -27,13 +31,16 @@ public:
     }hostInfo;
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(hostInfo, hostIp, user, passwd, type, port)
 
-
-
     ScpFile(const hostInfo& src, const hostInfo& dst);
     explicit ScpFile(const hostInfo& src);
     std::vector<int> transFile(const std::vector<std::string>& src_file, const std::string& src_path, const std::string& dst_path);
-    FUNCTION_RETURN    execute(sshInfo* ssh_info, const std::string& command,
-                               std::string& result);
+    funcRes transFile(const std::string& src_path, const std::string& dst_path);
+    funcRes getAllFiles(const std::string& src_path, std::vector<std::string>& files, std::vector<std::string>& deepest_dir);
+    funcRes scpFiles(std::vector<std::string>& files, const std::string& src_path, const std::string& dst_path, std::vector<std::string>& dirs);
+    // if the remote directory is exists, it will be return fail
+    [[deprecated("useless")]]funcRes mkDir(sshInfo* ssh_info, std::vector<std::string>& dirs);
+    FUNCTION_RETURN    execute(sshInfo* ssh_info, const std::string& coamand, std::string& result);
+
     [[nodiscard]] bool getInitRet() const { return m_init_ok; }
     [[nodiscard]] bool getIsLocal() const { return m_is_local; }
     sshInfo* getSrcHostInfo() { return &m_si; }
@@ -52,6 +59,7 @@ private:
     FUNCTION_RETURN init(const hostInfo& src, sshInfo *ssh_info);
     void release(sshInfo *ssh_info);
     int waitSocket(int socket_fd, LIBSSH2_SESSION *session);
+    funcRes getDirFiles(LIBSSH2_SFTP* sftp_session, const std::string& src_path, std::vector<std::string>& files, std::vector<std::string>& deepest_dir);
 };
 END_NAMESPACE
 

@@ -456,12 +456,24 @@ void redisClManager::sshDeliver(nlohmann::json& js, SubParam* pa)
         ret_js["msgId"] = msg_id;
         nlohmann::json result_array = nlohmann::json::array();
 
+        funcRes res;
         for (const auto& iter : file_info_vec) {
-            std::vector<int> ret = scp->transFile(iter.fileName, iter.srcFilePath, iter.dstFilePath);
-
             nlohmann::json js_obj = nlohmann::json::object();
             js_obj.push_back({"srcFilePath", iter.srcFilePath});
             nlohmann::json res_obj = nlohmann::json::object();
+
+            if (iter.fileName.empty() || iter.fileName[0].empty()) {
+                res = scp->transFile(iter.srcFilePath, iter.dstFilePath);
+                int ret = res.result? 1 : 0;
+                res_obj.push_back({iter.srcFilePath, ret});
+                js_obj.push_back({"fileName", res_obj});
+                result_array.push_back(js_obj);
+                continue ;
+            }
+
+            std::vector<int> ret = scp->transFile(iter.fileName, iter.srcFilePath, iter.dstFilePath);
+
+
             vector<string> files = iter.fileName;
             auto first = files.begin();
             for (auto it = files.begin(); it != files.end(); ++it) {

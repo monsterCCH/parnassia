@@ -5,9 +5,11 @@
 #include <unistd.h>
 #include <ctime>
 #include <arpa/inet.h>
+#include "libssh2_sftp.h"
 
 #include <utility>
 #include "logger.h"
+#include "utils_file.h"
 
 using namespace SCP;
 
@@ -103,7 +105,209 @@ void ScpFile::release(sshInfo* ssh_info)
         close(ssh_info->sock);
     }
 }
+funcRes ScpFile::getDirFiles(LIBSSH2_SFTP* sftp_session, const std::string& src_path, std::vector<std::string>& files, std::vector<std::string>& deepest_dir)
+{
+    LIBSSH2_SFTP_HANDLE *sftp_handle = nullptr;
 
+    sftp_handle = libssh2_sftp_opendir(sftp_session, src_path.c_str());
+    if (!sftp_handle) {
+        LOG->warn("Unable to open dir with SFTP");
+        return {false, std::string("Unable to open dir with SFTP")};
+    }
+
+    std::vector<std::string> dirs;
+    int rc;
+    do {
+        char mem[512];
+        char longentry[512];
+        LIBSSH2_SFTP_ATTRIBUTES attrs;
+
+        rc = libssh2_sftp_readdir_ex(sftp_handle, mem, sizeof(mem),
+                                     longentry, sizeof(longentry), &attrs);
+        if (rc > 0) {
+            if ((attrs.permissions & LIBSSH2_SFTP_S_IFMT) != LIBSSH2_SFTP_S_IFDIR) {
+                std::string file = src_path + "/" + mem;
+                files.emplace_back(file);
+            } else {
+                std::string dir_name = mem;
+                if (dir_name == "." || dir_name == "..") continue ;
+                std::string dir = src_path + "/" + mem;
+                deepest_dir.emplace_back(dir);
+                dirs.emplace_back(dir);
+            }
+
+        }else
+            break;
+
+    }while(1);
+
+    libssh2_sftp_closedir(sftp_handle);
+
+
+    for(const auto& iter : dirs) {
+        funcRes ret = getDirFiles(sftp_session, iter, files, deepest_dir);
+        if (!ret.result) {
+            LOG->warn("get subdirectory files error");
+            return {false, std::string("get subdirectory files error")};
+        }
+    }
+    return {true, {}};
+}
+
+funcRes ScpFile::getAllFiles(const std::string& src_path, std::vector<std::string>& files, std::vector<std::string>& deepest_dir)
+{
+    LIBSSH2_SFTP *sftp_session = nullptr;
+    LIBSSH2_SFTP_HANDLE *sftp_handle = nullptr;
+    sftp_session = libssh2_sftp_init(m_si.session);
+    if (!sftp_session) {
+        LOG->warn("Unable to init SFTP session");
+        return {false, std::string("Unable to init SFTP session")};
+    }
+
+    libssh2_session_set_blocking(m_si.session, 1);
+
+    funcRes ret = getDirFiles(sftp_session, src_path, files, deepest_dir);
+
+    libssh2_sftp_shutdown(sftp_session);
+
+    return ret;
+}
+
+funcRes ScpFile::transFile(const std::string& src_path, const std::string& dst_path)
+{
+    try {
+        if (!getIsLocal()) {
+            return {false, std::string("don't support remote to remote")};
+        }
+        std::vector<std::string> files, dirs;
+        funcRes ret = getAllFiles(src_path, files, dirs);
+        if (!ret.result) {
+            return ret;
+        }
+
+        LOG->info("start deliver directory {}", src_path);
+        ret = scpFiles(files, src_path, dst_path, dirs);
+        if (!ret.result) {
+            return ret;
+        }
+        LOG->info("end deliver directory {}", src_path);
+        return ret;
+    }
+    catch (std::exception& e) {
+        LOG->warn("deliver directory fail, src:{} dst:{}, {}",src_path, dst_path, e.what());
+        return {false, e.what()};
+    }
+}
+
+funcRes ScpFile::scpFiles(std::vector<std::string>& files, const std::string& src_path, const std::string& dst_path, std::vector<std::string>& dirs)
+{
+    for (auto &it : dirs) {
+        it = it.replace(it.find(src_path), src_path.length(), dst_path + "/");
+    }
+    if (getIsLocal()) {
+        for (auto &it : dirs) {
+            if (!create_dir(it.c_str())) {
+                LOG->warn("can not mkdir in local");
+                return {false, std::string("can not mkdir in local")};
+            }
+        }
+    } else {
+        for (auto &it : dirs) {
+            std::string command = "mkdir -p " + it;
+            std::string result;
+            if (FUNC_RET_OK != execute(&m_di, command, result)) {
+                LOG->warn("remote dir {} create fail", dst_path);
+                return {false, std::string("can not mkdir in remote host")};
+            }
+        }
+    }
+    LIBSSH2_SFTP *sftp_session;
+    sftp_session = libssh2_sftp_init(m_si.session);
+    if (!sftp_session) {
+        LOG->warn("Unable to init SFTP session");
+        return {false, std::string("Unable to init SFTP session")};
+    }
+
+    libssh2_session_set_blocking(m_si.session, 1);
+
+    for (const auto& iter : files) {
+
+        LIBSSH2_SFTP_HANDLE* sftp_handle = nullptr;
+
+        int rc = 0;
+        std::string dst_abs_file = iter;
+        dst_abs_file = dst_abs_file.replace( iter.find(src_path), src_path.length(), dst_path + "/");
+
+        sftp_handle = libssh2_sftp_open(sftp_session, iter.c_str(), LIBSSH2_FXF_READ, 0);
+        if (!sftp_handle) {
+            LOG->warn("Unable to open file with SFTP");
+            return {false, std::string("Unable to open file with SFTP")};
+        }
+
+        int fd;
+        if (getIsLocal()) {
+            fd = open(
+                dst_abs_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
+            if (fd < 0) {
+                LOG->warn("file open fail: {}", dst_abs_file);
+                return {false, std::string("file open fail")};
+            }
+        }
+        do {
+            char mem[1024];
+
+            /* loop until we fail */
+            rc = libssh2_sftp_read(sftp_handle, mem, sizeof(mem));
+            if (rc > 0) {
+                write(fd, mem, rc);
+            }
+            else {
+                break;
+            }
+        } while(1);
+
+        if (getIsLocal()) {
+            if (fd > 2) {
+                close(fd);
+            }
+        }
+        libssh2_sftp_close(sftp_handle);
+    }
+
+    libssh2_sftp_shutdown(sftp_session);
+
+    return {true, {}};
+}
+
+funcRes ScpFile::mkDir(sshInfo* ssh_info, std::vector<std::string>& dirs)
+{
+    LIBSSH2_SFTP *sftp_session = nullptr;
+    int rc;
+    sftp_session = libssh2_sftp_init(ssh_info->session);
+
+    if(!sftp_session) {
+        LOG->warn("mkdir: Unable to init SFTP session");
+        return {false, std::string("mkdir: Unable to init SFTP session")};
+    }
+
+    libssh2_session_set_blocking(ssh_info->session, 1);
+
+    for (auto &iter : dirs) {
+        rc = libssh2_sftp_mkdir(sftp_session, iter.c_str(),
+                                LIBSSH2_SFTP_S_IRWXU|
+                                    LIBSSH2_SFTP_S_IRGRP|LIBSSH2_SFTP_S_IXGRP|
+                                    LIBSSH2_SFTP_S_IROTH|LIBSSH2_SFTP_S_IXOTH);
+
+        if(rc) {
+            libssh2_sftp_shutdown(sftp_session);
+            LOG->warn("libssh2_sftp_mkdir failed");
+            return {false, std::string("libssh2_sftp_mkdir failed")};
+        }
+    }
+    libssh2_sftp_shutdown(sftp_session);
+
+    return {true, std::string("")};
+}
 
 std::vector<int> ScpFile::transFile(const std::vector<std::string>& src_file, const std::string& src_path, const std::string& dst_path)
 {
@@ -154,7 +358,6 @@ std::vector<int> ScpFile::transFile(const std::vector<std::string>& src_file, co
                                             (unsigned long)fileinfo.st_size);
             if (!channel_send) {
                 LOG->warn("Unable to open a session: {0:d}", libssh2_session_last_errno(m_di.session));
-//                release(&m_di);
                 res.push_back(FAIL);
                 continue ;
             }

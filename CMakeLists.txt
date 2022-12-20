@@ -60,7 +60,7 @@ set(COMPILER_FLAGS_RELEASE)
 if(CMAKE_CXX_COMPILER_ID MATCHES GNU)
     list(APPEND CXX_FLAGS "-fno-rtti" )
     list(APPEND CXX_FLAGS_DEBUG "-Wdeprecated-declarations" "-Wsuggest-final-types" "-Wsuggest-final-methods" "-Wsuggest-override")
-    list(APPEND CXX_FLAGS_RELEASE "-O3" "-Wno-unused")
+    list(APPEND CXX_FLAGS_RELEASE "-g" "-O3" "-Wno-unused")
 endif()
 
 # 设置 sanitizer 选项
