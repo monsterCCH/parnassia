@@ -6,6 +6,7 @@
 #include "utils_file.h"
 #include "utils_string.h"
 #include "nlohmann/json.hpp"
+#include "config.h"
 
 [[maybe_unused]]const unordered_map<string, VIRTUALIZATION_DETAIL> virtual_cpu_names{
     {"bhyve bhyve ", V_OTHER},
@@ -61,6 +62,7 @@ hostInfo::hostInfo()
     getMemInfo();
     disk_info = DISK::getDiskInfos();
     cur_env = getRunningEnv();
+    CONFIG::config::instance().set_config_str("sys_id", sys_id);
 }
 
 string hostInfo::genSysId()

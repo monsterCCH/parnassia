@@ -30,6 +30,31 @@ config& config::instance()
     return s_instance;
 }
 
+bool config::set_config_str(const std::string& key, const std::string& value)
+{
+    if (!file_exists(cfg_file)) {
+        LOG->error("No redis connection info, config file {} isn't exist ",
+                   cfg_file);
+        return false;
+    }
+    try {
+        std::ifstream f(cfg_file);
+        _js = nlohmann::json::parse(f);
+        _js[key] = value;
+
+        std::ofstream out(cfg_file,std::ios::trunc|std::ios::out);
+        if (out.is_open()) {
+            out << _js.dump(4);
+            out.close();
+            return true;
+        }
+    }
+    catch (std::exception& e) {
+        LOG->error("Parse config file error : {}", e.what());
+    }
+    return false;
+}
+
 const std::vector<redisCluster>& config::get_redisCluster()
 {
     return _redisCluster;

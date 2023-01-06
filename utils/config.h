@@ -36,6 +36,7 @@ public:
     config(const config&) = delete;
     config &operator=(const config&) = delete;
     static config& instance();
+    bool set_config_str(const std::string& key, const std::string& value);
     const std::vector<redisCluster>& get_redisCluster();
 };
 
