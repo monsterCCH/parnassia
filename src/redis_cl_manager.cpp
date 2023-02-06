@@ -227,7 +227,7 @@ int redisClManager::getTopicId(const std::string& topic)
             sub.subscribe(pa->topic);
             for (;;) {
                 sub.consume();
-                usleep(1000);
+                usleep(100000);
             }
         } catch (exception& e) {
             LOG->warn("redis_cluster subscriber error : {}", e.what());

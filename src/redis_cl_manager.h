@@ -77,8 +77,9 @@ public:
     }fileInfo;
 
     [[maybe_unused]]ThreadPool thread_pool;
+
+    static bool parseServer(const std::string& server, std::pair<std::string, int>& ip_port);
 private:
-    bool parseServer(const std::string& server, std::pair<std::string, int>& ip_port);
     void redisCLInit(const CONFIG::redisCluster& rc);
     void redisInit(const CONFIG::redisCluster& rc);
     void redisSubInit();

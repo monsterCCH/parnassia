@@ -7,12 +7,22 @@ project(parnassia_test)
 #设置项目头文件
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../utils)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 #设置项目源文件
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/tests TEST_FILES)
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/mocks MOCK_FILES)
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/../utils UTILS_SOURCES)
+#aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/../src SOURCES)
 set(MODULE_FILE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/config_manager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/ini_parser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/host_info.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/redis_cl_manager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/disk.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/dmi_info.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/get_adapters.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/redis_async_opt.cpp
         )
 
 #链接生成静态库
@@ -25,6 +35,7 @@ enable_testing()
 add_executable(${PROJECT_NAME}
         ${TEST_FILES}
         ${MOCK_FILES}
+        ${MODULE_FILE}
         ${UTILS_SOURCES}
         )
 
@@ -43,8 +54,14 @@ target_compile_options(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
         PRIVATE
         libssh2.a
-        ssl
-        crypto
+        iniparser
+        libhiredis.a
+        libevent.a
+        libredis++.a
+        libssh2.a
+        libworkflow.a
+        libssl.a
+        libcrypto.a
         gtest
         gtest_main
         pthread

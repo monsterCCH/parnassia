@@ -15,7 +15,7 @@ config::config()
     }
     try {
         std::ifstream f(cfg_file);
-        _js                          = nlohmann::json::parse(f);
+        _js = nlohmann::json::parse(f);
         nlohmann::json redis_cluster = _js[redis_cluster_item];
         _redisCluster = redis_cluster.get<std::vector<redisCluster> >();
     }

@@ -14,6 +14,8 @@ size_t mstrlcpy(char* dst, const char* src, size_t n);
 
 int hi_atoi(uint8_t *line, size_t n);
 
+void split(const std::string& str, std::vector<std::string>& str_vec, const char* delim = " ");
+
 template<typename First, typename ... T>
 inline bool is_in(const First& first, const T& ... t) {
     return ((first == t) or ...);

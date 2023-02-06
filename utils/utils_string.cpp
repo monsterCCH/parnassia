@@ -74,3 +74,17 @@ int hi_atoi(uint8_t *line, size_t n) {
 
     return value;
 }
+
+void split(const std::string& str, std::vector<std::string>& str_vec, const char* delim)
+{
+    if (str.empty()) return ;
+    str_vec.clear();
+    char* buffer = new char[str.size() + 1];
+    buffer[str.size()] = '\0';
+    std::copy(str.begin(), str.end(), buffer);
+    char* p = std::strtok(buffer, delim);
+    do {
+        str_vec.emplace_back(p);
+    } while ((p = std::strtok(nullptr, delim)));
+    delete[] buffer;
+}

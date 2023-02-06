@@ -51,7 +51,7 @@ TEST_F(ScpTest, scp_remote) {
 //    src_file.emplace_back("aaa");
     src_file.emplace_back("axeagent_ins.tar.gz");
     src_file.emplace_back("wutong_ins.tar.gz");
-    std::vector<bool> res;
+    std::vector<int> res;
     res = scp.transFile(src_file, src_path, dst_path);
     auto file_name = src_file.begin();
     for (auto iter : res) {

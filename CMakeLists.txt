@@ -105,6 +105,7 @@ set(THIRD_PARTY_LIBS
         ${THIRD_PARTY_LIB_BASE}/libssh2
         ${THIRD_PARTY_LIB_BASE}/openssl
         ${THIRD_PARTY_LIB_BASE}/workflow
+        ${THIRD_PARTY_LIB_BASE}/iniparser
         )
 set(THIRD_PARTY_LIBS_INC ${THIRD_PARTY_LIBS})
 set(THIRD_PARTY_LIBS_LINK ${THIRD_PARTY_LIBS})
