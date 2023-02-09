@@ -2,6 +2,7 @@
 #include <csignal>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/file.h>
 
 using namespace std;
 
@@ -57,6 +58,94 @@ bool create_dir(const char *dir) {
     return true;
 }
 
+bool IsFile(const std::string &filePath)
+{
+    struct stat st;
+    if (0 == stat(filePath.c_str(), &st)) {
+        if (st.st_mode & S_IFDIR) {
+            return false;   // dir
+        }
+        else if (st.st_mode & S_IFREG) {
+            return true;   // file
+        }
+    }
+    return false;
+}
+
+bool FastReadFile(const std::string &filePath, std::string &fileData, bool lock)
+{
+    static constexpr long bufSize = 4096;
+
+    if (!IsFile(filePath)) {
+        return false;
+    }
+
+    FILE* pFile;
+    if ((pFile = fopen(filePath.c_str(), "r")) == NULL) {
+        return false;
+    }
+
+    if (lock && flock(fileno(pFile), LOCK_SH | LOCK_NB) != 0) {
+        fclose(pFile);
+        return false;
+    }
+
+    // 计算文件大小
+    fseek(pFile, 0, SEEK_SET);
+    long begin = ftell(pFile);
+    fseek(pFile, 0, SEEK_END);
+    long end      = ftell(pFile);
+    long fileSize = end - begin;
+    fseek(pFile, 0, SEEK_SET);   // 重新指向文件头
+
+    fileData.reserve(fileSize + 1);
+
+    char readBuf[bufSize + 1];
+    long readSize = 0;
+    while (readSize < fileSize) {
+        long minRead = std::min(fileSize - readSize, bufSize);
+        long len     = fread(readBuf, 1, minRead, pFile);
+        readSize += len;
+        fileData.append(readBuf, len);
+    }
+
+    if (lock && flock(fileno(pFile), LOCK_UN) != 0) {
+        fclose(pFile);
+        return false;
+    }
+
+    fclose(pFile);
+    return true;
+}
+
+bool WriteFile(const std::string &filePath, const std::string &fileData, bool lock)
+{
+    FILE *pFile;
+    if ((pFile = fopen(filePath.c_str(), "w")) == NULL)
+    {
+        return false;
+    }
+
+    // 互斥锁/不阻塞
+    if (lock && flock(fileno(pFile), LOCK_EX | LOCK_NB) != 0)
+    {
+        fclose(pFile);
+        return false;
+    }
+
+    fwrite(fileData.c_str(), 1, fileData.length(), pFile);
+
+    // 解锁
+    if (lock && flock(fileno(pFile), LOCK_UN) != 0)
+    {
+        fclose(pFile);
+        return false;
+    }
+
+    fclose(pFile);
+    return true;
+}
+
 ReadSmallFile::ReadSmallFile(StringArg filename)
     : fd_(::open(filename.c_str(), O_RDONLY | O_CLOEXEC)),
       err_(0)
@@ -76,15 +165,14 @@ ReadSmallFile::~ReadSmallFile()
     }
 }
 
-template<typename String>
+//template<typename String>
 int ReadSmallFile::readToString(int maxSize,
-                                          String* content,
+                                          std::string* content,
                                           int64_t* fileSize,
                                           int64_t* modifyTime,
                                           int64_t* createTime)
 {
     static_assert(sizeof(off_t) == 8, "_FILE_OFFSET_BITS = 64");
-    assert(content != NULL);
     int err = err_;
     if (fd_ >= 0)
     {

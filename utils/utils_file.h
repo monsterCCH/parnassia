@@ -11,15 +11,18 @@ std::string get_file_contents(const char *filename,size_t max_size);
 bool dir_exists(const std::string& dir);
 bool file_exists(const std::string& file);
 bool create_dir(const char *dir);
+bool IsFile(const std::string& filePath);
+bool FastReadFile(const std::string &filePath, std::string &fileData, bool lock);
+bool WriteFile(const std::string &filePath, const std::string &fileData, bool lock);
 
 class ReadSmallFile : noncopyable
 {
 public:
     ReadSmallFile(StringArg filename);
     ~ReadSmallFile();
-    template<typename String>
+//    template<typename String>
     int readToString(int maxSize,
-                             String* content,
+                             std::string* content,
                              int64_t* fileSize = NULL,
                              int64_t* modifyTime = NULL,
                              int64_t* createTime = NULL);

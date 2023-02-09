@@ -10,6 +10,7 @@
 #include "redis_cl_manager.h"
 #include "redis_async_opt.h"
 #include "timer.h"
+#include "config_manager.h"
 
 LPTIMERMANAGER g_ptr_tmr_mgr;       //全局定时器管理
 typedef struct {
@@ -22,6 +23,11 @@ void RedisPublishDockerImage(void *pParam);
 void RedisPublishDockerContainer(void *pParam);
 void RedisPublishDockerContainerStates(void *pParam);
 void RedisPublishKvmInfo(void *pParam);
+
+typedef struct {
+    std::shared_ptr<CONFIG_MANAGER::ConfigManager> pcm;
+}ConfigManagerParam;
+void ConfigCheck(void * pParam);
 
 const std::string PROC_NAME = "parnassia";
 static std::string pid_file = "/var/run/" + PROC_NAME + ".pid";
@@ -157,6 +163,8 @@ int main(int argc, char* argv[])
 //    hostInfo hi;
     std::shared_ptr<hostInfo> hi_ptr = std::make_shared<hostInfo>();
     std::shared_ptr<redisClManager> redis_ptr= std::make_shared<redisClManager>(CONFIG::config::instance().get_redisCluster());
+    std::shared_ptr<CONFIG_MANAGER::ConfigManager> cm_ptr = std::make_shared<CONFIG_MANAGER::ConfigManager>();
+    cm_ptr->run();
 
     g_ptr_tmr_mgr = CreateTimerManager();
     RedisPublishParam param = {hi_ptr, redis_ptr};
@@ -165,7 +173,11 @@ int main(int argc, char* argv[])
     CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerImage, &param, 0, 30 * 1000);
     CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerContainer, &param, 0, 30 * 1000);
     CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerContainerStates, &param, 0, 30 * 1000);
-//    CreateTimer(g_ptr_tmr_mgr, &RedisPublishKvmInfo, &param, 0, 30 * 1000);
+    //    CreateTimer(g_ptr_tmr_mgr, &RedisPublishKvmInfo, &param, 0, 30 * 1000);
+
+    ConfigManagerParam cm_param = {cm_ptr};
+    CreateTimer(g_ptr_tmr_mgr, &ConfigCheck, &cm_param, 0, 60 * 1000);
+
     pthread_join(g_ptr_tmr_mgr->thread, nullptr);
 
     return 0;
@@ -213,6 +225,13 @@ void sigExit(int signo)
 void redisInit()
 {
     redisClManager instance{CONFIG::config::instance().get_redisCluster()};
+}
+
+void ConfigCheck(void *pParam)
+{
+    ConfigManagerParam* ptr = (ConfigManagerParam *)pParam;
+
+    ptr->pcm->check_config(ptr->pcm->get_ini_map());
 }
 
 void RedisPublishHwInfo(void *pParam)

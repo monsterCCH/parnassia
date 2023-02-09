@@ -23,11 +23,11 @@ public:
         int64_t create_time;
     }FileStat;
 
-    explicit ConfigManager(const std::string& ini_file);
+    explicit ConfigManager(const std::string& ini_file = "/etc/config_manager.ini");
     ~ConfigManager() override = default;
 
     void run();
-    funcRes check_config(INI_MAP* ini_map, const std::string& module_name = "");
+    funcRes check_config(INI_MAP* ini_map, const std::string& module_name = "", bool confirm = false);
     int set_config(INI_MAP* ini_map);
     int del_section(const std::vector<std::string>& secs);
 
@@ -35,7 +35,11 @@ private:
     void init();
     void redis_subscriber();
     funcRes task(const string& msg);
+    funcRes file_opt(const string& msg);
+    funcRes file_read(const nlohmann::json& js);
+    funcRes file_write(const nlohmann::json& js);
     funcRes module_control(const nlohmann::json& js);
+    funcRes config_setting(const nlohmann::json& js);
     funcRes control_execute(const std::string& module_name, const std::string& opt);
 
 private:
