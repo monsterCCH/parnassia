@@ -27,7 +27,7 @@ public:
     ~ConfigManager() override = default;
 
     void run();
-    funcRes check_config(INI_MAP* ini_map, const std::string& module_name = "", bool confirm = false);
+    funcRes check_config(INI_MAP* ini_map, const std::string& module_name = "", const std::string& file_name = "", bool confirm = false);
     int set_config(INI_MAP* ini_map);
     int del_section(const std::vector<std::string>& secs);
 

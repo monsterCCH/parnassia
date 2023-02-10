@@ -100,7 +100,7 @@ static std::map<int, std::string> RedisSubItemMap = {
     }
 using namespace CONFIG_MANAGER;
 
-ConfigManager::ConfigManager(const std::string& ini_file) : IniParser(ini_file)
+ConfigManager::ConfigManager(const std::string& ini_file) : IniParser(ini_file), mutex_()
 {
     init();
     //TODO init run once ?
@@ -109,29 +109,41 @@ ConfigManager::ConfigManager(const std::string& ini_file) : IniParser(ini_file)
 
 void ConfigManager::init()
 {
-    sw::redis::Optional<sw::redis::ConnectionOptions> opts;
-    auto conf = CONFIG::config::instance().get_redisCluster();
-    for (const auto& item: conf) {
-        if (item.type == TYPE_REDIS_CLUSTER) {
-            std::pair<string, int> ip_port;
-            if (!redisClManager::parseServer(item.redis_server, ip_port)) {
-                LOG->warn("Config Manager: parser redis_server fail");
-                return ;
+    try {
+        sw::redis::Optional<sw::redis::ConnectionOptions> opts;
+        auto conf = CONFIG::config::instance().get_redisCluster();
+        for (const auto& item : conf) {
+            if (item.type == TYPE_REDIS_CLUSTER) {
+                std::pair<string, int> ip_port;
+                if (!redisClManager::parseServer(item.redis_server, ip_port)) {
+                    LOG->warn("Config Manager: parser redis_server fail");
+                    return;
+                }
+                opts->host     = ip_port.first;
+                opts->port     = ip_port.second;
+                opts->password = item.auth;
             }
-            opts->host = ip_port.first;
-            opts->port = ip_port.second;
-            opts->password = item.auth;
         }
+        redis_cluster_ = std::make_shared<sw::redis::RedisCluster>(*opts);
+        LOG->info("Config Manager connect to redis");
     }
-
-    redis_cluster_ = std::make_shared<sw::redis::RedisCluster>(*opts);
+    catch (exception& e) {
+        LOG->warn("redis cluster init fail : {}", e.what());
+    }
 }
 
 void ConfigManager::run()
 {
-    Thread trd([this] { redis_subscriber(); }, "CM:redis_sub");
-    trd.start();
-//    trd.join();
+    try {
+        Thread trd([this] { redis_subscriber(); }, "CM:redis_sub");
+        trd.start();
+        //    trd.join();
+    } catch (std::exception& e) {
+        LOG->warn("Config Manager run fail : {}", e.what());
+    } catch (...) {
+        LOG->warn("Config Manager run fail : unknown error");
+    }
+
 }
 
 funcRes ConfigManager::control_execute(const std::string& module_name, const std::string& opt)
@@ -212,6 +224,9 @@ funcRes ConfigManager::file_write(const nlohmann::json& js)
             content = ele.value();
         }
         bool ret = WriteFile(file_name, content, true);
+        if (ret) {
+            check_config(get_ini_map(), "", file_name, true);
+        }
 
         nlohmann::json ret_js;
         ret_js[BaseMacroMap[BM_SYS_ID]] = getSysId();
@@ -247,7 +262,7 @@ funcRes ConfigManager::module_control(const nlohmann::json& js)
         if (opt == IniItemMap[II_CHECK]) {
             ret = check_config(get_ini_map(), module_name);
         } else if (opt == IniItemMap[II_CONFIRM]) {
-            ret = check_config(get_ini_map(), module_name, true);
+            ret = check_config(get_ini_map(), module_name, "", true);
         } else {
             ret = control_execute(module_name, opt);
         }
@@ -424,7 +439,7 @@ funcRes ConfigManager::file_opt(const string& msg)
     return {true, {}};
 }
 
-funcRes ConfigManager::check_config(INI_MAP* ini_map, const std::string& module_name, bool confirm)
+funcRes ConfigManager::check_config(INI_MAP* ini_map, const std::string& module_name, const std::string& file_name, bool confirm)
 {
     std::string err_msg;
     try {
@@ -501,12 +516,17 @@ funcRes ConfigManager::check_config(INI_MAP* ini_map, const std::string& module_
                     CHECK_ADD_VALUE;
                 } else {
                     try {
+                        bool temp_confirm = confirm;
                         if (std::to_string(fs.modify_time) != trim_copy(old_modifys[i])
                             || std::to_string(fs.file_size) != trim_copy(old_sizes[i])) {
                             LOG->warn("Config Manager: Module [{}] conf file [{}] has been modify unexpectedly.", module, *it);
 
                             if (trim_copy(old_modifys[i]) == "none"
                                 && trim_copy(old_sizes[i]) == "none") {
+                                confirm = true;
+                            }
+
+                            if (!file_name.empty() && file_name == (*it)) {
                                 confirm = true;
                             }
 
@@ -532,6 +552,7 @@ funcRes ConfigManager::check_config(INI_MAP* ini_map, const std::string& module_
                             LOG->info("Config Manager: Module [{}] conf file [{}] everything is ok.", module, *it);
                             CHECK_ADD_VALUE;
                         }
+                        confirm = temp_confirm;
                     } catch (std::exception &e) {
                         LOG->warn("Config Manager: Module [{}] conf file [{}] have err [{}]", module, *it, e.what());
                         CHECK_ADD_NONE;
