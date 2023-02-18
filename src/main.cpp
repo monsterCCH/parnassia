@@ -152,13 +152,8 @@ int main(int argc, char* argv[])
     close(STDERR_FILENO);
     signal(SIGPIPE, SIG_IGN);
 
-    try {
-        for (const auto& iter : CONFIG::config::instance().get_redisCluster()){
-            std::string redis_server = iter.redis_server;
-        }
-    } catch (exception& e) {
-        LOG->error("{}", e.what());
-    }
+    int only_conf_manager = 0;
+    only_conf_manager = CONFIG::config::instance().get_int_value("only_config_manager");
 
 //    hostInfo hi;
     std::shared_ptr<hostInfo> hi_ptr = std::make_shared<hostInfo>();
@@ -169,11 +164,13 @@ int main(int argc, char* argv[])
     g_ptr_tmr_mgr = CreateTimerManager();
     RedisPublishParam param = {hi_ptr, redis_ptr};
     CreateTimer(g_ptr_tmr_mgr, &RedisPublishHwInfo, &param, 0, 30 * 1000);
-    CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerInfo, &param, 0, 30 * 1000);
-    CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerImage, &param, 0, 30 * 1000);
-    CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerContainer, &param, 0, 30 * 1000);
-    CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerContainerStates, &param, 0, 30 * 1000);
-    //    CreateTimer(g_ptr_tmr_mgr, &RedisPublishKvmInfo, &param, 0, 30 * 1000);
+    if (!only_conf_manager) {
+        CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerInfo, &param, 0, 30 * 1000);
+        CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerImage, &param, 0, 30 * 1000);
+        CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerContainer, &param, 0, 30 * 1000);
+        CreateTimer(g_ptr_tmr_mgr, &RedisPublishDockerContainerStates, &param, 0, 30 * 1000);
+        //    CreateTimer(g_ptr_tmr_mgr, &RedisPublishKvmInfo, &param, 0, 30 * 1000);
+    }
 
     ConfigManagerParam cm_param = {cm_ptr};
     CreateTimer(g_ptr_tmr_mgr, &ConfigCheck, &cm_param, 0, 60 * 1000);

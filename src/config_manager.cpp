@@ -121,7 +121,7 @@ void ConfigManager::init()
                 }
                 opts->host     = ip_port.first;
                 opts->port     = ip_port.second;
-                opts->password = item.auth;
+                opts->password = item.passwd;
             }
         }
         redis_cluster_ = std::make_shared<sw::redis::RedisCluster>(*opts);
@@ -295,7 +295,6 @@ funcRes ConfigManager::config_setting(const nlohmann::json& js)
         if (action == "del") {
             std::vector<std::string> sec{module_name};
             del_section(sec);
-            return {true, {}};
         }
 
         if (action == "set") {

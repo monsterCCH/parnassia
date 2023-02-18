@@ -30,10 +30,32 @@ config& config::instance()
     return s_instance;
 }
 
+int config::get_int_value(const std::string& key)
+{
+    int value;
+    auto ele = _js.find(key.c_str());
+    if (ele != _js.end()) {
+        value = ele.value();
+    }
+
+   return value;
+}
+
+std::string config::get_str_value(const std::string& key)
+{
+   std::string value;
+   auto ele = _js.find(key.c_str());
+   if (ele != _js.end()) {
+        value = ele.value();
+   }
+
+   return value;
+}
+
 bool config::set_config_str(const std::string& key, const std::string& value)
 {
     if (!file_exists(cfg_file)) {
-        LOG->error("No redis connection info, config file {} isn't exist ",
+        LOG->error("config file {} isn't exist ",
                    cfg_file);
         return false;
     }

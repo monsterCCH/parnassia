@@ -71,6 +71,7 @@ install(){
 
 #复制配置文件到指定路径
 cp -f cfg/parnassia.cfg /etc
+cp -f cfg/config_manager.ini /etc
 
 #根据输入参数，选择执行对应方法，不输入则执行使用说明
 case "$1" in
